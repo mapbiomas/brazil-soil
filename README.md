@@ -32,7 +32,7 @@ The repository is organized in directories containing the code for each collecti
 To learn how to use the code, please check the README file inside the collection of interest.
 
 ## Contact
-For clarifications or to report issues/bugs, please contact: @samuel-rosa or @taciaraz
+For clarifications or to report issues/bugs, please contact <contato@mapbiomas.org>
 
 ## License  
 This repository is licensed under [INSERT LICENSE HERE].
