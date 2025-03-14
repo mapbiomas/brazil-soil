@@ -1,13 +1,13 @@
 # MapBiomas Brazil - Soil
 Developed by [Laboratório de Pedometria](https://www.pedometria.org/)
 
-## Repository Description
+## Description and Objectives
 This repository contains the scripts for mapping soil organic carbon stocks, particle size distribution, and texture across Brazil as part of the MapBiomas Soil project.
 
 For detailed information about the data and modeling approach, please refer to the MapBiomas Soil [Algorithm Theoretical Basis Document (ATBD)](https://brasil.mapbiomas.org/metodo-mapbiomas-solo/).
 
-## Repository Objectives
-* Share the methods used for mapping soil properties across Brazil.
+The objectives of this repository are:
+* Share the methods used for mapping soil properties across Brazil in space and time.
 * Facilitate collaboration and adaptation by international partners.
 * Provide resources for adjusting the mapping workflow according to regional needs.
 
