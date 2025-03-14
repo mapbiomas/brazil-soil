@@ -26,7 +26,9 @@ The objectives of this repository are:
 ## Repository Structure
 The repository is organized in directories containing the code for each collection.
 
+* [Soil Collection Beta](./collection_01beta/)
 * [Soil Collection 2](./collection_02/)
+* [Soil Collection 3](./collection_03/)
 
 ## Usage
 To learn how to use the code, please check the README file inside the collection of interest.
