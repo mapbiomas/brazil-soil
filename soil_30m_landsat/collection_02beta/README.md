@@ -31,7 +31,7 @@ The code in this repository is designed to be run on the Google Earth Engine (GE
 
 4. **Open the Scripts in GEE**:
    * Open the GEE Code Editor and create a new script.
-   * Copy the contents of the desired script from the `carbon`, `texture`, or `covariate` subdirectory into the GEE Code Editor.
+   * Copy the contents of the desired script from the `carbon`, `texture`, or `covariates` subdirectory into the GEE Code Editor.
 
 5. **Run the Script**:
    * Follow the instructions provided in the script to run it and generate the desired maps.
