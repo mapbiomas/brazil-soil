@@ -1,1 +1,45 @@
-# MapBiomas Soil Collection Beta
+# MapBiomas Soil Collection 1 Beta
+
+## Description
+This directory contains scripts for modeling soil organic carbon stocks across Brazil as part of the MapBiomas Soil project at 30-m spatial resolution with Landsat collections.
+
+## Subdirectories
+This directory contains the following subdirectories:
+
+* [carbon](./carbon/): Contains scripts for modeling soil organic carbon stocks.
+* [covariates](./covariates/): Contains scripts for generating covariates used in the soil modeling process.
+
+## Usage
+The code in this repository is designed to be run on the Google Earth Engine (GEE) Code Editor. Follow these steps to use the code:
+
+1. **Create a Google Earth Engine Account**:
+   * If you don't have an account, [create one here](https://signup.earthengine.google.com/).
+
+2. **Access the GEE Code Editor**:
+   * Go to the [Google Earth Engine Code Editor](https://code.earthengine.google.com/).
+
+3. **Clone the Repository**:
+   * Clone this repository to your local workspace:
+     ```sh
+     git clone https://github.com/mapbiomas/brazil-soil.git
+     ```
+   * Navigate to the `collection_01beta` directory:
+     ```sh
+     cd brazil-soil/soil_30m_landsat/collection_01beta
+     ```
+
+4. **Open the Scripts in GEE**:
+   * Open the GEE Code Editor and create a new script.
+   * Copy the contents of the desired script from the `carbon` or `covariate` subdirectory into the GEE Code Editor.
+
+5. **Run the Script**:
+   * Follow the instructions provided in the script to run it and generate the desired maps.
+
+6. **Adjust Parameters**:
+   * If needed, adjust the parameters in the script to fit your specific requirements, including the relevant paths.
+
+## Contact
+For clarifications or to report issues/bugs, please contact: <contato@mapbiomas.org>
+
+## License  
+This repository is licensed under [INSERT LICENSE HERE].

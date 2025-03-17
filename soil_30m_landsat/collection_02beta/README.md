@@ -1,14 +1,14 @@
 # MapBiomas Soil Collection 2 Beta
 
 ## Description
-This directory contains scripts for modeling soil organic carbon stocks, particle size distribution, and texture across Brazil as part of the MapBiomas Soil project.
+This directory contains scripts for modeling soil organic carbon stocks, particle size distribution, and texture across Brazil as part of the MapBiomas Soil project at 30-m spatial resolution with Landsat collections.
 
 ## Subdirectories
 This directory contains the following subdirectories:
 
 * [carbon](./carbon/): Contains scripts for modeling soil organic carbon stocks in space and time.
 * [texture](./texture/): Contains scripts for modeling soil particle size distribution (clay, silt, and sand) and texture in space and depth.
-* [covariate](./covariate/): Contains scripts for generating covariates used in the soil modeling process.
+* [covariates](./covariates/): Contains scripts for generating covariates used in the soil modeling process.
 
 ## Usage
 The code in this repository is designed to be run on the Google Earth Engine (GEE) Code Editor. Follow these steps to use the code:
