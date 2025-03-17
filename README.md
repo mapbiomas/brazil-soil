@@ -1,7 +1,7 @@
 # MapBiomas Brazil - Soil
 
 ## Description
-This repository contains the scripts for mapping soil organic carbon stocks (annual), particle size distribution (static), and texture (static) across Brazil as part of the MapBiomas Soil project at 30-m spatial resolution with Landsat collections.
+This repository contains the scripts for modelling soil organic carbon stocks, particle size distribution, and texture across Brazil as part of the MapBiomas Soil project at 30-m spatial resolution with Landsat collections.
 
 For detailed information about the data and modeling approach, please refer to the MapBiomas Soil [Algorithm Theoretical Basis Document (ATBD)](https://brasil.mapbiomas.org/metodo-mapbiomas-solo/).
 
@@ -21,8 +21,8 @@ For detailed information about the data and modeling approach, please refer to t
 ## Structure
 The repository is organized in directories containing the code for each collection inside the toplevel directory [soil_30m_landsat](./soil_30m_landsat/).
 
-* [Soil Collection 1-beta](./soil_30m_landsat/collection_01beta/): Contains the scripts for mapping soil organic carbon stocks (1985-2021)
-* [Soil Collection 2-beta](./soil_30m_landsat/collection_02beta/): Contains the scripts for mapping soil organic carbon stocks (1985-2023, 0-30 cm) and soil particle size distribution and texture (0-30 cm)
+* [Soil Collection 1-beta](./soil_30m_landsat/collection_01beta/): Contains the scripts for modelling soil organic carbon stocks (1985-2021) in space and time
+* [Soil Collection 2-beta](./soil_30m_landsat/collection_02beta/): Contains the scripts for modelling soil organic carbon stocks (1985-2023, 0-30 cm) in space and time and soil particle size distribution and texture (0-30 cm) in space and depth
 * [Soil Collection 3](./soil_30m_landsat/collection_03/): In progress
 
 ## Usage
