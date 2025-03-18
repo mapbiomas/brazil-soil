@@ -7,7 +7,8 @@
 */
 
 //--- VERSIONING
-var version = 'brasil-filter-rep' //Change as needed
+var version = 'collection2-filter-rep' //Change as needed
+
 
 // --- CALLING ENVIRONMENTAL COVARIATES FROM MODULE
 var covariates = require('users/wallacesilva/mapbiomas-solos:COLECAO_01/development/_module_covariates/module_covariates');
@@ -18,9 +19,6 @@ var dynamic_covariates_carbon = covariates.dynamic_covariates();
 var selected_bandnames_static = [
     // List of covariates for available static covariates
     
-    //Base Map Mapbiomas 1984
-    
-    // 'mapbiomas_v001_1984', 
     
     //WRB probability classes
     'Ferralsols',
@@ -31,12 +29,12 @@ var selected_bandnames_static = [
     'Wetsols',
     
     //Soilgrids Soil Properties
-    'bdod',
-    'cec',
-    'cfvo',
+    // 'bdod',
+    // 'cec',
+    // 'cfvo',
     'nitrogen',
     'phh2o',
-    'soc',
+    // 'soc',
     // 'sand', //(Used in STOCKCOS v000)
     // 'clay', //(Used in STOCKCOS v000)
     // 'silt', // (Used in STOCKCOS v000)
@@ -45,10 +43,6 @@ var selected_bandnames_static = [
     'clayminerals',
 
     //Granulometry MapBiomas
-    // 'mapbiomas_sand_v003', 
-    // 'mapbiomas_silt_v003', 
-    // 'mapbiomas_clay_v003',
-        //v009 0_10cm
     'clay_000_030cm',
     'sand_000_030cm',
     'silt_000_030cm',
@@ -75,14 +69,6 @@ var selected_bandnames_static = [
     'latitude', 
     'longitude',
     
-    //Oblique Coordinates (Used FROM STOCKCOS v002)
-    // 'OGC_0', 
-    // 'OGC_0_53',
-    // 'OGC_1_03', 
-    // 'OGC_1_57', 
-    // 'OGC_2_10', 
-    // 'OGC_2_60',
-    
     //Koppen
     'lv1_Humid_subtropical_zone',
     'lv1_Tropical',
@@ -95,7 +81,7 @@ var selected_bandnames_static = [
     'lv3_with_temperate_summer',
     
     //Biomes 
-    'Amazonia',
+    // 'Amazonia',
     'Caatinga',
     'Cerrado',
     'Mata_Atlantica',
@@ -133,59 +119,17 @@ var selected_bandnames_static = [
     'Sao_Luis_Provincia',
     'Tocantis_Provincia',
     
-    //Fourth National Communication
-    // "cagb",
-    // "cbgb",
-    // "cdw",
-    // "clitter",
-    // "ctotal",
-    
     'Area_Estavel',
     
-    'IFN_index'
+   // 'IFN_index'
 ];
 
 var selected_bandnames_dynamic = [
     // List of covariates for available dynamic covariates
-    
-    //GT vegetation indices
-    // 'evi_mean',
-    // 'savi_mean',
-    // 'ndvi_mean',
-    
-    // Mapbiomas vegetation indices 
-    // 'mb_ndvi_median',
-    // 'mb_evi2_median',
-    // 'mb_savi_median',    
-    
     'mb_ndvi_median_decay',
     'mb_evi2_median_decay',
     'mb_savi_median_decay',
     
-    // 'mb_ndvi_median_wet',
-    // 'mb_ndvi_median_dry',    
-    
-    // 'mb_ndvi_median_wet_decay',
-    // 'mb_ndvi_median_dry_decay',
-    
-    // 'mb_evi2_median_wet',
-    // 'mb_evi2_median_dry',    
-    
-    // 'mb_evi2_median_wet_decay',
-    // 'mb_evi2_median_dry_decay',
- 
-    // 'mb_savi_median_wet',
-    // 'mb_savi_median_dry',    
-    
-    // 'mb_savi_median_wet_decay',
-    // 'mb_savi_median_dry_decay',
-    
-    // Mapbiomas Degradation Beta (SUM(30, 60, 90, 150, 300m))
-    'mb_summed_edges',
-    
-    // Mapbiomas Water Col. 3
-    // 'mb_water_accumulate_dynamic',
-    // 'mb_water_recurrence_dynamic',
     
     // Mapbiomas Fire Col. 3 
     'mb_fire_accumulate_dynamic',
@@ -224,18 +168,13 @@ Map.addLayer(dynamic_images, {}, 'Dynamic Covariates', false);
 var biomas = ee.FeatureCollection('projects/mapbiomas-workspace/AUXILIAR/biomas_IBGE_250mil');
 
 // Filtrar os biomas para excluir o bioma 'Amazônia'
-var filtro_biomas = biomas.filter(ee.Filter.inList('Bioma', ['Amazônia','Caatinga', 'Cerrado', 'Mata Atlântica', 'Pantanal', 'Pampa'])).union();
+// var filtro_biomas = biomas.filter(ee.Filter.inList('Bioma', ['Caatinga', 'Cerrado', 'Mata Atlântica', 'Pantanal'])).union();
+// var filtro_biomas = biomas.filter(ee.Filter.inList('Bioma', ['Caatinga', 'Cerrado', 'Mata Atlântica', 'Pantanal', 'Pampa'])).union();
+// var filtro_biomas = biomas.filter(ee.Filter.inList('Bioma', ['Amazônia','Caatinga', 'Cerrado', 'Mata Atlântica', 'Pantanal', 'Pampa'])).union();
 // var filtro_biomas = biomas.filter(ee.Filter.eq('Bioma', 'Amazônia'));
 // var filtro_biomas = biomas.filter(ee.Filter.eq('Bioma', 'Cerrado'));
-var points = ee.FeatureCollection('projects/mapbiomas-workspace/SOLOS/AMOSTRAS/ORIGINAIS/2024-12-01-organic-carbon-stock-gram-per-square-meter-filter-rep')
-    .filterBounds(filtro_biomas) 
-    .map(function(point){
-        return point
-            .select(['estoque', 'year', 'id', 'IFN_index'], ['estoque', 'year', 'id', 'IFN_index']);
-            //.select(['soc_stock_g_m2', 'year', 'id'], ['estoque', 'year', 'dataset_id']);
-            // .select(['soc_stock_t_ha', 'sampling_year', 'id'], ['estoque', 'year', 'dataset_id']);
-            // .select(['carbono_estoque_gm2','data_coleta_ano','id'],['estoque','year','dataset_id']);
-    })
+
+var points = ee.FeatureCollection('projects/mapbiomas-workspace/SOLOS/AMOSTRAS/ORIGINAIS/2024-12-01-organic-carbon-stock-gram-per-square-meter-filter-rep');
 
 Map.addLayer(points, {color: 'ff0000'}, 'Filtered Points', false);
 
