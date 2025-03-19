@@ -168,9 +168,11 @@ function corrections_LS57_col2 (image){
     return image
       .addBands(oxides);
   }
+  var region = ee.FeatureCollection('projects/mapbiomas-workspace/AUXILIAR/estados-2017')
+    .map(function(feature){return feature.geometry().buffer(3000)});
   
-  var mask = ee.Image().paint(ee.FeatureCollection('projects/mapbiomas-workspace/AUXILIAR/estados-2017'));
-  var description = 'qualityMosaic-oxidesIndex';
+  var mask = ee.Image().paint(region);
+  var description = 'medianMosaic-oxidesIndex'; //Revisar
   
   // Import the Landsat 5, 7, and 8 collections
   var l5 = ee.ImageCollection('LANDSAT/LT05/C02/T1_L2')
@@ -189,7 +191,7 @@ function corrections_LS57_col2 (image){
   var collection = l5.merge(l7).merge(l8);
   var ironOxides = collection
         .select('oxides')
-        .mean()
+        .median() // Revisar
         .rename('oxides_quality')
         .int16()
         .updateMask(mask.eq(0))
@@ -197,7 +199,7 @@ function corrections_LS57_col2 (image){
           'reduce':'median',
           'index': description,
           'version':'v1',
-          'create-data':'2023-03-22'
+          'create-data':'2024-08-12'
         });
         
   //Visualizar
@@ -205,7 +207,7 @@ function corrections_LS57_col2 (image){
   Map.addLayer (ironOxides.select('oxides_quality'), {min:185, max:265}, 'oxides', false);
   
   //Exportar
-  var output_folder = 'projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/LANDSAT_OXIDES_BY_BYTE';
+  var output_folder = 'projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/LANDSAT_OXIDES_BY_BYTE_v1';
    Export.image.toAsset({
         image: ironOxides,
         description:'OXIDES',
