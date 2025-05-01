@@ -1,13 +1,21 @@
 /*
- * MAPBIOMAS SOIL
- * @contact: contato@mapbiomas.org
- * @date: May 01, 2025
- *
  * Dataset: Black Soil Probability 30m
+ * 
+ * Authors:
+ * - Wallace Silva
+ * - Barbara Silva
+ * - Taciara Horst
+ * - Marcos Cardoso
+ * - David Pontes
  *
  * Processing:
  * - Filling empty pixels with interpolation
  * - Extrapolation of 3km beyond the country's border
+ *
+ * Contact: contato@mapbiomas.org
+ * Last modified on May 01, 2025
+ *
+ * MapBiomas Soil
  */
 
 var blacksoil = ee.Image('projects/mapbiomas-solos-workspace/assets/covariates/soil/FAO_blackSoilProbability_1km')
