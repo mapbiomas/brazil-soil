@@ -1,12 +1,16 @@
 /*
- * MAPBIOMAS SOIL
- * @contact: contato@mapbiomas.org
- * @date: May 01, 2025
- *
  * Dataset: IBGE 2019 Biomes 250k
- *
+ * 
+ * Authors:
+ * - Taciara Horst
+ * 
  * Processing:
  * - Generating dummy variables for Brazilian biomes
+ * 
+ * Contact: contato@mapbiomas.org
+ * Last modified on May 01, 2025
+ * 
+ * MapBiomas Soil
  */
 
 var geometry = ee.FeatureCollection('projects/mapbiomas-workspace/AUXILIAR/biomas_IBGE_250mil');
