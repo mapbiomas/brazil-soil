@@ -1,13 +1,17 @@
 /*
- * MAPBIOMAS SOIL
- * @contact: contato@mapbiomas.org
- * @date: May 01, 2025
- *
  * Dataset: IBGE 2019 Provinces 250k
+ * 
+ * Authors:
+ * - Taciara Horst
  * 
  * Processing:
  * - Generating dummy variables for Brazilian provinces
  * - Extrapolation of 3km beyond the country's border
+ * 
+ * Contact: contato@mapbiomas.org
+ * Last modified on May 01, 2025
+ * 
+ * MapBiomas Soil
  */
 
 // Import a coleção de províncias geológicas do IBGE.
