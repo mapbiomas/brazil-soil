@@ -4,7 +4,7 @@
  * Authors:
  * - Taciara Horst
  * 
- * Processing:
+ * Changes:
  * - Generating dummy variables for Brazilian phytophysiognomies
  * - Extrapolation of 3km beyond the country's border
  * - Filling empty pixels with interpolation

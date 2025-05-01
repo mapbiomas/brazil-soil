@@ -8,7 +8,7 @@
  * - Marcos Cardoso
  * - David Pontes
  *
- * Processing:
+ * Changes:
  * - Filling empty pixels with interpolation
  * - Extrapolation of 3km beyond the country's border
  *

@@ -4,7 +4,7 @@
  * Authors:
  * - Taciara Horst
  * 
- * Processing:
+ * Changes:
  * - Generating dummy variables for Brazilian biomes
  * 
  * Contact: contato@mapbiomas.org
