@@ -1,14 +1,14 @@
-/* 
-PROJETO MAPBIOMAS - Solo | GT Solos - Pacote de Trabalho: Mapeamento Espaço-Temporal de Propriedades do Solo
-Dataset IBGE Fitofisionomias atualizada 2023- Duumy
-
-Atualização: Preenchimento dos pixels vazios. 
-
-Data: 2024-08-19
-Autores: Wallace Silva, Barbara Silva, Taciara Horst, Marcos Cardoso e David Pontes
-
-Contato: contato@mapbiomas.org
-
+/*
+ * MAPBIOMAS SOIL
+ * @contact: contato@mapbiomas.org
+ * @date: May 01, 2025
+ *
+ * Dataset: IBGE 2023 Fitofisionomias 250k
+ * 
+ * Processing:
+ * - Generating dummy variables for Brazilian provinces
+ * - Extrapolation of 3km beyond the country's border
+ * - Filling empty pixels with interpolation
 */
 
 // Dicionário de Legendas: Mapeia nomes de classes de vegetação para abreviações.
@@ -50,7 +50,6 @@ var legend = ee.Dictionary({
       var legenda_1 = ee.String(current);
   // Filtra os recursos com base na legenda.
       var feature = featureCollection.filter(ee.Filter.eq('legenda_1',legenda_1));
-  
       var img = ee.Image()
       .paint(feature)
       .eq(0).unmask(0)
@@ -58,26 +57,17 @@ var legend = ee.Dictionary({
       .byte()
       // .clip(featureCollection);
       .updateMask(mask);
-     
       return ee.Image(previous)
         .addBands(img);
-      
     },ee.Image().select());
-  
-  // Converte a variável 'image' em uma imagem do GEE.
   image = ee.Image(image);
-  // Imprime a imagem resultante no console.
-  print(image);
-  // Adiciona a imagem ao mapa no GEE.
+  
   
   Map.addLayer(image,{min: 0, max:1, bands:'Floresta_Ombrofila_Aberta'},'image');
   
   var params = {
     radius:1000,
-    // kernelType:,
     units:'meters',
-    // iterations:,
-    // kernel:
   };
   
   var interpolation = image
@@ -87,29 +77,24 @@ var legend = ee.Dictionary({
     .unmask(0);
   
   // Map.addLayer(image.select(0),{min:160,max:655},'image');
-  
   image = interpolation.blend(image);
   print(image);
   
   Map.addLayer(image,{min: 0, max:1, bands:'Floresta_Ombrofila_Aberta'},'focalMax');
   
   // Define uma descrição e um ID para a exportação da imagem como um asset no GEE.
-  var description = 'IBGE_FITOFISIONOMIA_250MIL_2023_DUMMY_v1';
+  var description = 'IBGE_2023_FITOFISIONOMIA_250MIL';
   var assetId = 'projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/' + description;
   
   // Exporta a imagem resultante como um asset no GEE.
   Export.image.toAsset({
-  // Define a imagem que será exportada e adiciona uma descrição a ela, incluindo um link para o script no GEE.  
     image:image.set({
-      description:"https://code.earthengine.google.com/?scriptPath=users%2Fwallacesilva%2Fmapbiomas-solos%3ACOLECAO_01%2Fexport-datasets%2FIBGE_FITOFISIONOMIAS_2023_250MIL_DUUMY"
+      description:"https://code.earthengine.google.com/?scriptPath=users%2Fwallacesilva%2Fmapbiomas-solos%3APRODUCTION%2F2024_c02beta%2Fcovariates%2Fexport_covariates_asset%2FIBGE2023_FITOFISIONOMIAS_250MIL"
     }), 
     description:description,
     assetId:assetId, 
     pyramidingPolicy:'mode',
-    // dimensions:,
     region:region, 
     scale:30,
-    // crs, crsTransform, 
     maxPixels:1e11,
-    // shardSize:
   });
