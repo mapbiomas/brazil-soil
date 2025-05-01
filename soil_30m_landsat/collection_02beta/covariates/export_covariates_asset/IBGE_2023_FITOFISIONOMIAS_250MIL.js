@@ -1,15 +1,19 @@
 /*
- * MAPBIOMAS SOIL
- * @contact: contato@mapbiomas.org
- * @date: May 01, 2025
- *
  * Dataset: IBGE 2023 Fitofisionomias 250k
  * 
+ * Authors:
+ * - Taciara Horst
+ * 
  * Processing:
- * - Generating dummy variables for Brazilian provinces
+ * - Generating dummy variables for Brazilian phytophysiognomies
  * - Extrapolation of 3km beyond the country's border
  * - Filling empty pixels with interpolation
-*/
+ * 
+ * Contact: contato@mapbiomas.org
+ * Last modified on May 01, 2025
+ * 
+ * MapBiomas Soil
+ */
 
 // Dicionário de Legendas: Mapeia nomes de classes de vegetação para abreviações.
 var legend = ee.Dictionary({
