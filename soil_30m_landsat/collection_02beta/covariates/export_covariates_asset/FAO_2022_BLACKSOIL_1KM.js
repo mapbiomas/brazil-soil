@@ -1,46 +1,28 @@
-var geometry = 
-    /* color: #d63000 */
-    /* shown: false */
-    /* displayProperties: [
-      {
-        "type": "rectangle"
-      }
-    ] */
-    ee.Geometry.Polygon(
-        [[[-77.89585620965532, 7.442687707812072],
-          [-77.89585620965532, -35.39475280299957],
-          [-29.556012459655328, -35.39475280299957],
-          [-29.556012459655328, 7.442687707812072]]], null, false);
-/* 
-PROJETO MAPBIOMAS - Solo | GT Solos - Pacote de Trabalho: Mapeamento Espaço-Temporal de Propriedades do Solo
-Dataset Probabilidade do Black Soil 30m
+/*
+ * MAPBIOMAS SOIL
+ * @contact: contato@mapbiomas.org
+ * @date: May 01, 2025
+ *
+ * Dataset: Black Soil Probability 30m
+ *
+ * Processing:
+ * - Filling empty pixels with interpolation
+ * - Extrapolation of 3km beyond the country's border
+ */
 
-Atualização: Preenchimento dos pixels vazios. 
-
-Data: 2024-06-03
-Autores: Wallace Silva, Barbara Silva, Taciara Horst, Marcos Cardoso e David Pontes
-
-Contato: contato@mapbiomas.org
-
-*/
 var blacksoil = ee.Image('projects/mapbiomas-solos-workspace/assets/covariates/soil/FAO_blackSoilProbability_1km')
 .select(0)
-
-// .rename('b1', 'blackSoilProb');
 
 var br = ee.FeatureCollection('projects/mapbiomas-workspace/AUXILIAR/biomas_IBGE_250mil');
 var br_mask = ee.Image().paint(br).eq(0);
 var bounds = br.geometry().bounds();
 
 var output = 'projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/';
-var DataSetName = 'FAO_blackSoilProbability'; 
+var DataSetName = 'FAO_2022_BLACKSOIL_1KM'; 
 
     var params = {
       radius:1000,
-      // kernelType:,
       units:'meters',
-      // iterations:,
-      // kernel:
     };
     
     var interpolation = blacksoil
@@ -62,7 +44,6 @@ var DataSetName = 'FAO_blackSoilProbability';
       .resample({mode:'bilinear'})
       .reproject({
         crs:'EPSG:4326',
-        // crsTransform:,
         scale:30
       }).set({
         'index': DataSetName,
@@ -75,18 +56,14 @@ var DataSetName = 'FAO_blackSoilProbability';
     
     Map.addLayer(blacksoil.select(0),{min:160,max:655},'image resample')
     
-    var description = DataSetName  + '_30m_v1';
+    var description = DataSetName;
     
     Export.image.toAsset({
       image:blacksoil,
       description:description,
       assetId:output + description,
       pyramidingPolicy:'mean',
-      // dimensions:,
       region:bounds,
       scale:30,
-      // crs:,
-      // crsTransform:,
       maxPixels:1e11,
-      // shardSize:
     });
