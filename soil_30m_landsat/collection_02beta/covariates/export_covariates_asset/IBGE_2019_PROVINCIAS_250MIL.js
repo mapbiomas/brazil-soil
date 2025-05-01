@@ -1,14 +1,17 @@
+/*
+ * MAPBIOMAS SOIL
+ * @contact: contato@mapbiomas.org
+ * @date: May 01, 2025
+ *
+ * Dataset: IBGE 2019 Provinces 250k
+ * 
+ * Processing:
+ * - Generating dummy variables for Brazilian provinces
+ * - Extrapolation of 3km beyond the country's border
+ */
+
+// Import a coleção de províncias geológicas do IBGE.
 var table = ee.FeatureCollection("projects/mapbiomas-solos-workspace/assets/covariates/geology/IBGE_provinciasEstruturais_250mil");
-/* 
-PROJETO MAPBIOMAS - Solo | GT Solos - Pacote de Trabalho: Mapeamento Espaço-Temporal de Propriedades do Solo
-Dataset IBGE Províncias geológicas do Brasil - Duumy
-
-Data: 2024-02-09
-Autores:  Bárbara Silva, Wallace Silva, Taciara Horst, Marcos Cardoso e David Pontes
-
-Contato: mapbiomas@contato.com
-.
-*/
 
 // Dicionário de Legendas: Mapeia nomes de classes para abreviações.
 var legend = ee.Dictionary({
@@ -52,33 +55,23 @@ var image = featureCollection.aggregate_array('legenda').distinct().sort()
     var legenda_1 = ee.String(current);
 // Filtra os recursos com base na legenda.
     var feature = featureCollection.filter(ee.Filter.eq('legenda',legenda_1));
-
     var img = ee.Image()
     .paint(feature)
     .eq(0).unmask(0)
     .rename(legenda_1)
     .byte()
-    // .clip(featureCollection);
     .updateMask(mask);
-   
     return ee.Image(previous)
       .addBands(img);
-    
   },ee.Image().select());
-
-// Converte a variável 'image' em uma imagem do GEE.
 image = ee.Image(image);
-// Imprime a imagem resultante no console.
-print(image);
+
 
 Map.addLayer(image,{min: 0, max:1, bands:'Costeira_Margem_Continental_Provincia'},'image');
 
 var params = {
   radius:1000,
-  // kernelType:,
   units:'meters',
-  // iterations:,
-  // kernel:
 };
 
 var interpolation = image
@@ -86,33 +79,25 @@ var interpolation = image
   .focalMax(params)
   .focalMax(params)
   .unmask(0);
-
-// Map.addLayer(image.select(0),{min:160,max:655},'image');
-
 image = interpolation.blend(image);
 print(image);
 
-Map.addLayer(image,{min: 0, max:1, bands:'Costeira_Margem_Continental_Provincia'},'focalMax');
 
-// Adiciona a imagem ao mapa no GEE.
+Map.addLayer(image,{min: 0, max:1, bands:'Costeira_Margem_Continental_Provincia'},'focalMax');
 Map.addLayer(image);
-// Define uma descrição e um ID para a exportação da imagem como um asset no GEE.
-var description = 'IBGE_PROVINCIAS_250MIL_DUMMY_v1';
+
+var description = 'IBGE_2019_PROVINCIAS_250MIL';
 var assetId = 'projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/' + description;
 
 // Exporta a imagem resultante como um asset no GEE.
 Export.image.toAsset({
-// Define a imagem que será exportada e adiciona uma descrição a ela, incluindo um link para o script no GEE.  
   image:image.set({
-    description:"https://code.earthengine.google.com/?scriptPath=users%2Fwallacesilva%2Fmapbiomas-solos%3ACOLECAO_01%2Fexport-datasets%2FIBGE_PROVINCIAS_250MIL_DUMMY_v1"
+    description:"https://code.earthengine.google.com/?scriptPath=users%2Fwallacesilva%2Fmapbiomas-solos%3ACOLECAO_01%2Fexport-datasets%2FIBGE_2019_PROVINCIAS_250MIL"
   }), 
   description:description,
   assetId:assetId, 
   pyramidingPolicy:'mode',
-  // dimensions:,
   region:region, 
   scale:30,
-  // crs, crsTransform, 
   maxPixels:1e11,
-  // shardSize:
 });
