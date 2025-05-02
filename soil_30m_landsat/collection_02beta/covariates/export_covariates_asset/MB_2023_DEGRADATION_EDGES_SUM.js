@@ -1,13 +1,19 @@
-/* 
-PROJETO MAPBIOMAS - Solo | GT Solos - Pacote de Trabalho: Mapeamento Espaço-Temporal de Propriedades do Solo
-Dataset MB_DEGRADATION_BETA_SUMMED_EDGE_DUUMY
+/*
+  * Dataset: MapBiomas Collection 9.0 Summed Edges Dummy
+  * 
+  * Authors:
+  * - Marcos Cardoso
+  * 
+  * Changes:
+  * - 2024-10-27
+  * 
+  * Contact: contato@mapbiomas.org
+  * Last modified on May 01, 2025
+  *
+  * MapBiomas Soil
+  * 
+  */
 
-Data: 2024-10-27 
-Autores: Marcos Cardoso 
-
-Contato: contato@mapbiomas.org
-
-*/
 var edgeImages = [
   ['edge_300m', ee.Image('projects/mapbiomas-workspace/DEGRADACAO/COLECAO/BETA/PROCESS/edge_area/edge_300m_col9_v1')],
   ['edge_150m', ee.Image('projects/mapbiomas-workspace/DEGRADACAO/COLECAO/BETA/PROCESS/edge_area/edge_150m_col9_v1')],
