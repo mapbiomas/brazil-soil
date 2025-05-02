@@ -1,3 +1,22 @@
+/*
+* Dataset: LANDSAT clayminerals index
+*
+* Authors:
+* - Wallace Silva
+* - Barbara Silva
+* - Taciara Horst
+* - Marcos Cardoso
+* - David Pontes
+* 
+* Changes:
+* - 2024-08: Filling empty pixels with interpolation
+* 
+* Contact: contato@mapbiomas.org
+* Last modified on May 01, 2025
+* 
+* MapBiomas Soil
+*/
+
 var geometry = 
     /* color: #d63000 */
     /* shown: false */
@@ -11,19 +30,6 @@ var geometry =
           [-74.04409005983102, -34.183732823083936],
           [-34.053855684831014, -34.183732823083936],
           [-34.053855684831014, 5.677090648400953]]], null, false);
-/* 
-PROJETO MAPBIOMAS - Solo | GT Solos - Pacote de Trabalho: Mapeamento Espaço-Temporal de Propriedades do Solo
-Dataset LANDSAT_CLAYMINERALS_BY_BYTE
-
-Atualização: Preenchimento de pixels vazios.
-
-Data: 2024-08-X
-Autores: Bárbara Costa, Wallace Silva, Taciara Horst, David Pontes e Marcos Cardoso
-Contato: taciaraz@utfpr.edu.br
-
-- - - - - - - CLAYMNINERALS (Al, Fe, MG)-OH INDEX CALC - - - - - - -
-*/
-  
 
 // --- as funções 'corrections' buscam resumir todos os processamentos necessarios para os mosaicos
 function corrections_LS57_col2 (image){
@@ -164,11 +170,8 @@ function addBand_CLAYMINERALS (image){
     .addBands(clayminerals);
 }
 
-var region = ee.FeatureCollection('projects/mapbiomas-workspace/AUXILIAR/estados-2017')
-   .map(function(feature){return feature.geometry().buffer(3000)});
-   
-var mask = ee.Image().paint(region);
-var description = 'medianMosaic-claymineralsIndex';
+var mask = ee.Image().paint(ee.FeatureCollection('projects/mapbiomas-workspace/AUXILIAR/estados-2017'));
+var description = 'qualityMosaic-claymineralsIndex';
 
 // Import the Landsat 5, 7, and 8 collections
 var l5 = ee.ImageCollection('LANDSAT/LT05/C02/T1_L2')
@@ -187,7 +190,7 @@ var l8 = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2')
 var collection = l5.merge(l7).merge(l8);
 var claymineral = collection
       .select('clayminerals')
-      .median()
+      .mean()
       .rename('clayminerals_quality')
       .int16()
       .updateMask(mask.eq(0))
@@ -195,13 +198,13 @@ var claymineral = collection
         'reduce':'median',
         'index': description,
         'version':'v1',
-        'create-data':'2024-08-12'
+        'create-data':'2023-03-22'
       });
 
 print (claymineral);
 Map.addLayer (claymineral.select('clayminerals_quality'), {min:30, max:100}, 'claymineral', false);
 
-var output_folder = 'projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/LANDSAT_CLAYMINERALS_BY_BYTE_v1';
+var output_folder = 'projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/LANDSAT_CLAYMINERALS_BY_BYTE';
  Export.image.toAsset({
       image: claymineral,
       description:'CLAYMINERALS',
@@ -216,4 +219,5 @@ var output_folder = 'projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/LANDSAT_CLAY
       // shardSize:
       });
 
-
+ 
+ 
