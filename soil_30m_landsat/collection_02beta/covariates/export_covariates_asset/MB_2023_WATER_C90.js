@@ -1,3 +1,19 @@
+/*
+  * Dataset: MapBiomas Collection 9.0 Water Recurrence
+  * 
+  * Authors:
+  * - 
+  * 
+  * Changes:
+  * - 
+  * 
+  * Contact: contato@mapbiomas.org
+  * Last modified on May 01, 2025
+  *
+  * MapBiomas Soil
+  * 
+  */
+
 // Função para obter parâmetros de visualização
 function getVisualizationParams() {
   return {
@@ -117,7 +133,7 @@ layersToProcess.forEach(function(layer) {
   print(layer.description,layer.image);
   
   Map.addLayer(layer.image, layer.visParams, layer.description, false);
-
+ 
   // Exibe a camada no console
   print(layer.description, layer.image);
 
