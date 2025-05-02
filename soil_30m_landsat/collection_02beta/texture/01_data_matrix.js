@@ -1,8 +1,12 @@
 /* 
  * MAPBIOMAS SOIL
  * @contact: contato@mapbiomas.org
- * @date: November 19, 2024
- * 
+ * @date: March 19, 2025
+*/
+
+// version 2 - 2025-04-25 Taciara
+
+/*
  * SCRIPT 1: SELECTION OF COVARIATES FOR GRANULOMETRY MODELING
  * 
  * **Purpose**:
@@ -28,7 +32,7 @@
  * 3. Combine covariates with soil data points from `SoilData`.
  * 
  * **Dependencies**:
- * - _module_covariates (for environmental layers)
+ * - covariate_sources (for environmental layers)
  * 
  * **Notes**:
  * - Spatial consistency is ensured by incorporating predictions for adjacent layers.
@@ -36,139 +40,18 @@
  * 
  * **Contact**:
  * - For issues related to covariate access or integration, contact Wallace Silva at wallace.silva@ipam.org.br
- * - Coordination: Dra. Taciara Zborowski Horst (taciaraz@professores.utfpr.edu.br)
  * - General questions: MapBiomas Soil Team: contato@mapbiomas.org
  */
 
 // --- VERSIONING
-//var version = 'v010_0_10cm';
-var version = 'beta_010_020'; 
-// var version = 'beta_020_030'; 
-
-// --- CALLING ENVIRONMENTAL COVARIATES FROM MODULE
-var covariates = require('users/wallacesilva/mapbiomas-solos:PRODUCTION/2024_beta_granulometria/1_covariate_source');
-var static_covariates = covariates.static_covariates();
-
-// --- DEFINITION OF COVARIATES LIST
-var selected_bandnames_static = [
-
-//////////////
-// CALL ---- SELECT TO MAP 10-20 cm
-//////////////
-
-  'depth_25',
-// Previews predictions
- 
-  'beta_clay_000_010',
-  'beta_sand_000_010',
-  'beta_silt_000_010',
-
-//////////////
-// CALL ---- SELECT TO MAP 20-30 cm
-//////////////
-// Previews predictions
-  // 'beta_clay_010_020',
-  // 'beta_sand_010_020',
-  // 'beta_silt_010_020',
-
-  // Terrain Morphometry
-  'slope',
-  'convergence',
-  'cti',
-  'eastness',
-  'northness',
-  'pcurv',
-  'roughness',
-  'spi',
-  'elevation',
-
-  // WRB Soil Classes (grouping in relation to texture)
-  'Sandy_soil',
-  'Loam_soil',
-  'Clayey_soil',
-  'Very_clay_soil',
-
-  'black_soil_prob',
-
-  // Climate Koeppen
-  'lv1_Tropical',
-  'lv1_Dry_season',
-  'lv1_Humid_subtropical_zone',
-  'lv2_without_dry_season',
-  'lv2_monsoon',
-  'lv2_with_dry_summer',
-  'lv2_with_dry_winter',
-  'lv2_semiarid',
-  'lv2_oceanic_climate_without_sry_season', // corrected
-  'lv2_with_dry_winter_1',
-  'lv3_low_latitude_and_altitude',
-  'lv3_with_hot_summer',
-  'lv3_with_temperate_summer',
-  'lv3_and_hot',
-  'lv3_and_temperate',
-  'lv3_and_hot_summer',
-  'lv3_and_temperate_summer',
-  'lv3_and_short_and_cool_summer',
-
-  // Biome
-  'Amazonia',
-  'Caatinga',
-  'Cerrado',
-  'Mata_Atlantica',
-  'Pampa',
-  'Pantanal',
-
-  // Phytophysiognomy
-  'Campinarana',
-  'Contato_Ecotono_e_Encrave',
-  'Corpo_dagua_continental',
-  'Estepe',
-  'Floresta_Estacional_Decidual',
-  'Floresta_Estacional_Semidecidual',
-  'Floresta_Estacional_Sempre_Verde',
-  'Floresta_Ombrofila_Aberta',
-  'Floresta_Ombrofila_Densa',
-  'Floresta_Ombrofila_Mista',
-  'Formacao_Pioneira',
-  'Savana',
-  'Savana_Estepica',
-
-  // Provinces
-  'Amazonas_Solimoes_Provincia',
-  'Amazonia_Provincia',
-  'Borborema_Provincia',
-  'Cobertura_Cenozoica_Provincia',
-  'Costeira_Margem_Continental_Provincia',
-  'Gurupi_Provincia',
-  'Mantiqueira_Provincia',
-  'Massa_d_agua_Provincia',
-  'Parana_Provincia',
-  'Parecis_Provincia',
-  'Parnaiba_Provincia',
-  'Reconcavo_Tucano_Jatoba_Provincia',
-  'Sao_Francisco_Provincia',
-  'Sao_Luis_Provincia',
-  'Tocantis_Provincia',
-
-  // Mineral indices 
-  'oxides',
-  'clayminerals',
-  
-  // index
-  'mb_ndvi_median_decay'
-];
-
-
-// --- STATIC
-var static_image = ee.Image.cat(static_covariates.select(selected_bandnames_static));
-print(static_image, "static_image");
-
-// --- PREPARING THE DATA MATRIX
+// var version = 'psd_c02beta_00_10cm_v2';
+// var version = 'psd_c02beta_010_020_v2'; 
+var version = 'psd_c02beta_020_030_v2'; 
 
 // // --- SOILDATA REPOSITORY DATA
 
 
-var points = ee.FeatureCollection('projects/mapbiomas-workspace/SOLOS/AMOSTRAS/ORIGINAIS/2024-11-17-clay-silt-sand-log-ratio')
+var points = ee.FeatureCollection('projects/earthengine-legacy/assets/projects/mapbiomas-workspace/SOLOS/AMOSTRAS/ORIGINAIS/2024-12-01-clay-silt-sand-log-ratio')
   .map(function(point, i) {
     return ee.Feature(point.geometry())
       .set({
@@ -179,13 +62,147 @@ var points = ee.FeatureCollection('projects/mapbiomas-workspace/SOLOS/AMOSTRAS/O
       });
   });
 
-if (points.size().getInfo() < 2185) {
-  throw new Error("⚠️ Original sample size does not match the training sample size ⚠️");
-} 
-
 print('points', points.limit(10), points.size());
 Map.addLayer(ee.Image(0), { palette: ['cccccc'] });
 Map.addLayer(points, { color: 'ff0000' }, 'points');
+
+
+// --- CALLING ENVIRONMENTAL COVARIATES FROM MODULE
+var covariates = require('users/wallacesilva/mapbiomas-solos:PRODUCTION/2024_c02beta/covariates/covariate_source');
+var static_covariates = covariates.static_covariates();
+
+// --- DEFINITION OF COVARIATES LIST
+var selected_bandnames_static = [
+//////////////
+//////////////
+// CALL ---- SELECT TO MAP 10-20 cm
+
+// // ////Particle Size Distribution (MapBiomas Soil previews prediction)
+//   'clay_000_010',
+//   'sand_000_010',
+//   'silt_000_010',
+
+// // //////////////
+// // // CALL ---- SELECT TO MAP 20-30 cm
+
+// // // Particle Size Distribution (MapBiomas Soil previews prediction)
+//   'clay_010_020',
+//   'sand_010_020',
+//   'silt_010_020',
+// // ///
+
+    //Soil Classes WRB probabilities (Hengl et al., 2017)
+    'Ferralsols',
+    'Histosols',
+    'Nitisols',
+    'Vertisols',
+    'Argisols',
+    'Humisols',
+    'Sandysols',
+    'Thinsols',
+    'Wetsols',
+
+    //Black Soils probability (FAO, 2022b)
+    'black_soil_prob',
+    
+
+    //Mineral indeces (Landsat 5, 7, and 8)
+    'clayminerals', 
+    'oxides',
+    'ndvi',
+
+   
+    //Land Surface Variables (Amatulli et al., 2020, 2018)
+    'slope',
+    'convergence',
+    'cti',
+    'eastness',
+    'northness',
+    'pcurv',
+    'roughness',
+    'spi',
+    
+    // Elevation (MERIT)
+    'elevation',
+    
+    //Köppen climate classification (Alvares et al., 2013)
+    
+    'koppen_l1_A',
+    'koppen_l2_Af', // Af
+    'koppen_l2_Am', // Am
+    'koppen_l2_As', // As
+    'koppen_l2_Aw', // Aw
+
+    'koppen_l3_Bsh', //BSh
+    
+    'koppen_l1_C', // C
+    'koppen_l2_Cf', // Cf
+    'koppen_l3_Cfa', // Cfa
+    'koppen_l3_Cfb', //Cfb
+        
+    'koppen_l2_Cw', // Cw
+    'koppen_l3_Cwa', // Cwa
+    'koppen_l3_Cwb', // Cwb
+    'koppen_l3_Cwc', // Cwc
+        
+    'koppen_l2_Cs', // Cs 
+    'koppen_l3_Csa',// Csa    
+    'koppen_l3_Csb', // Csb
+
+        
+    //Biome (IBGE, 2019b)
+    'Amazonia',
+    'Caatinga',
+    'Cerrado',
+    'Mata_Atlantica',
+    'Pampa',
+    'Pantanal',
+
+    //Phytophysiognomy (IBGE)
+    'Campinarana',
+    'Estepe', 
+    'Floresta_Estacional_Decidual', 
+    'Floresta_Estacional_Semidecidual',
+    'Floresta_Estacional_Sempre_Verde',
+    'Floresta_Ombrofila_Aberta',
+    'Floresta_Ombrofila_Densa',
+    'Floresta_Ombrofila_Mista',
+    'Formacao_Pioneira',
+    'Savana',
+    'Savana_Estepica',
+
+
+    //Spatial coordinates (test the inclusion)
+    'latitude', 
+    'longitude',
+    
+    //Geological classification (structural provinces) (IBGE, 2019)
+    'Amazonia_Provincia',
+    'Borborema_Provincia',
+    'Sao_Francisco_Provincia',  
+    'Tocantis_Provincia',   
+    'Mantiqueira_Provincia',
+    'Amazonas_Solimoes_Provincia',
+//    'Parana_Provincia',
+    'Parecis_Provincia',
+    'Parnaiba_Provincia',   
+    'Sao_Luis_Provincia',
+    'Gurupi_Provincia',    
+    'Reconcavo_Tucano_Jatoba_Provincia',
+    'Costeira_Margem_Continental_Provincia',    
+    'Cobertura_Cenozoica_Provincia',
+
+    // MapBiomas Water (Collection 3) - static
+    'mb_water_39y_recurrence', // recurrence (number of observations) of the water surface between 1985 and 2023
+    
+];
+
+
+// --- STATIC
+var static_image = ee.Image.cat(static_covariates.select(selected_bandnames_static));
+print(static_image, "static_image");
+
+// --- PREPARING THE DATA MATRIX
 
 // // --- CALLING SELECTED COVARIATES
 var static_covariates = static_image;
