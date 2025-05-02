@@ -1,4 +1,4 @@
-
+ 
 var biomas = ee.FeatureCollection('projects/mapbiomas-workspace/AUXILIAR/biomas_IBGE_250mil');
 var aoi = biomas;
 var aoi_img = ee.Image().paint(aoi).eq(0);
@@ -63,24 +63,21 @@ var years = [
 
       var mb_indices_year = [
     'ndvi_median',
-    'ndvi_median_wet','ndvi_median_dry',
+
     'evi2_median',
-    'evi2_median_wet','evi2_median_dry',
+
     'savi_median',
-    'savi_median_wet','savi_median_dry',
+
   ];
 
 var index_col = years.map(function(year) {
   // Inicializar containers para cada índice
   var container_ndvi = ee.Image().select();
-  var container_ndvi_wet = ee.Image().select();
-  var container_ndvi_dry = ee.Image().select();
+
   var container_evi2 = ee.Image().select();
-  var container_evi2_wet = ee.Image().select();
-  var container_evi2_dry = ee.Image().select();
+
   var container_savi = ee.Image().select();
-  var container_savi_wet = ee.Image().select();
-  var container_savi_dry = ee.Image().select();
+
 
   // Definindo o fator de decaimento
   var alfa_07 = [0.327, 0.229, 0.160, 0.112 , 0.078, 0.055, 0.038];
@@ -137,29 +134,13 @@ var index_col = years.map(function(year) {
         case 'ndvi_median':
           container_ndvi = container_ndvi.addBands(index_mean);
           break;
-        case 'ndvi_median_wet':
-          container_ndvi_wet = container_ndvi_wet.addBands(index_mean);
-          break;
-        case 'ndvi_median_dry':
-          container_ndvi_dry = container_ndvi_dry.addBands(index_mean);
-          break;
+
         case 'evi2_median':
           container_evi2 = container_evi2.addBands(index_mean);
           break;
-        case 'evi2_median_wet':
-          container_evi2_wet = container_evi2_wet.addBands(index_mean);
-          break;
-        case 'evi2_median_dry':
-          container_evi2_dry = container_evi2_dry.addBands(index_mean);
-          break;
+
         case 'savi_median':
           container_savi = container_savi.addBands(index_mean);
-          break;
-        case 'savi_median_wet':
-          container_savi_wet = container_savi_wet.addBands(index_mean);
-          break;
-        case 'savi_median_dry':
-          container_savi_dry = container_savi_dry.addBands(index_mean);
           break;
       }
     });
@@ -167,20 +148,13 @@ var index_col = years.map(function(year) {
 
   // Reduzir cada container somado para uma única banda
   container_ndvi = container_ndvi.reduce('sum').divide(100).byte().rename('mb_ndvi_median');
-  container_ndvi_wet = container_ndvi_wet.reduce('sum').divide(100).byte().rename('mb_ndvi_median_wet');
-  container_ndvi_dry = container_ndvi_dry.reduce('sum').divide(100).byte().rename('mb_ndvi_median_dry');
   container_evi2 = container_evi2.reduce('sum').divide(100).byte().rename('mb_evi2_median');
-  container_evi2_wet = container_evi2_wet.reduce('sum').divide(100).byte().rename('mb_evi2_median_wet');
-  container_evi2_dry = container_evi2_dry.reduce('sum').divide(100).byte().rename('mb_evi2_median_dry');
   container_savi = container_savi.reduce('sum').divide(100).byte().rename('mb_savi_median');
-  container_savi_wet = container_savi_wet.reduce('sum').divide(100).byte().rename('mb_savi_median_wet');
-  container_savi_dry = container_savi_dry.reduce('sum').divide(100).byte().rename('mb_savi_median_dry');
 
   // Combinar todos os containers em uma única imagem
   var container = container_ndvi.addBands([
-    container_ndvi_wet, container_ndvi_dry,
-    container_evi2, container_evi2_wet, container_evi2_dry,
-    container_savi, container_savi_wet, container_savi_dry
+    container_evi2,
+    container_savi
   ]);
 
   var start = ee.Date('' + year + '-01-01').millis();
@@ -201,7 +175,7 @@ print('index_col', index_col);
 years.forEach(function(year) {
   var image = index_col.filter(ee.Filter.eq('year', year)).first();
   var description = '' + year;
-  var assetId = 'projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/LANDSAT_MB_INDICES_DECAY/' + description;
+  var assetId = 'projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/LANDSAT_2023_MBINDICES_DECAY';
 
   Map.addLayer(image, {}, description);
 
