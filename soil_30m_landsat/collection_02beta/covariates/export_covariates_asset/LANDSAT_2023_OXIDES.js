@@ -1,3 +1,17 @@
+/*
+* Dataset: LANDSAT oxides index
+*
+* Authors:
+* - Barbara Silva
+* 
+* Changes:
+* - 2023-03-22 (Bárbara)
+* 
+* Contact: contato@mapbiomas.org
+* 
+* MapBiomas Soil
+*/
+
 var geometry = 
     /* color: #d63000 */
     /* shown: false */
@@ -11,15 +25,6 @@ var geometry =
           [-74.04409005983102, -34.183732823083936],
           [-34.053855684831014, -34.183732823083936],
           [-34.053855684831014, 5.677090648400953]]], null, false);
-/* REDE MAPBIOMAS | GT Solos
-  Pacote de Trabalho: Mapeamento Espaço-Temporal de Propriedades do Solo
-  Coleção Beta - Versão 1
-
-  Script: 2023-03-22 - Bárbara Costa
-  
-  - - - - - - - OXIDES (FE3+) INDEX CALC - - - - - - -
-*/
- 
  
 // As funções 'corrections' buscam resumir todos os processamentos necessarios para os mosaicos
 function corrections_LS57_col2 (image){
@@ -221,6 +226,4 @@ function corrections_LS57_col2 (image){
         maxPixels:1e13,
         // shardSize:
         });
-  
-  
   
