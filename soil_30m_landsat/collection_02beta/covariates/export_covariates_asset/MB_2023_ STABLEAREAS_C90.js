@@ -1,3 +1,22 @@
+/*
+  * Dataset: MapBiomas Collection 9.0 Stable Areas
+  * 
+  * Authors:
+  * - Wallace Silva
+  * - Barbara Silva
+  * - Taciara Horst
+  * - Marcos Cardoso
+  * 
+  * Changes:
+  * - 2024-08-26
+  * 
+  * Contact: contato@mapbiomas.org
+  * Last modified on May 01, 2025
+  * 
+  * MapBiomas Soil
+  */
+
+
 var geometry = 
     /* color: #d63000 */
     /* shown: false */
@@ -11,19 +30,9 @@ var geometry =
           [-75.03585878741384, -34.459089909580825],
           [-33.024140037413844, -34.459089909580825],
           [-33.024140037413844, 6.656330390133171]]], null, false);
-/* 
-PROJETO MAPBIOMAS - Solo | GT Solos - Pacote de Trabalho: Mapeamento Espaço-Temporal de Propriedades do Solo
-Dataset Áreas Estáveis Uso e Cobertura Coleção 9.0 - Duumy
-
-Data: 2024-08-26
-Autores: Wallace Silva, Barbara Silva, Taciara Horst, Marcos Cardoso 
-
-Contato: contato@mapbiomas.org
-
-*/
 
 // Construindo áreas estáveis
-
+ 
 // construindo areas estaveis
  
 var classification = 'projects/mapbiomas-public/assets/brazil/lulc/collection9/mapbiomas_collection90_integration_v1';
