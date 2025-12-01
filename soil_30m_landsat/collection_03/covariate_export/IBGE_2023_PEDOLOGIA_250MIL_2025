@@ -1,0 +1,92 @@
+var minhaImagem = ee.Image('projects/cardosomvs/assets/pedologia_raster');
+
+var classesNomes = ee.Dictionary({
+  1: 'PLANOSSOLO',
+  2: 'CHERNOSSOLO',
+  3: 'LATOSSOLO',
+  4: 'PLINTOSSOLO',
+  5: 'GLEISSOLO',
+  6: 'AFLORAMENTO', // AREA LULC X CLASSE > https://encurtador.com.br/EKbp
+  7: 'VERTISSOLO',
+  8: 'DUNAS', // AREA LULC X CLASSE > https://encurtador.com.br/bZXx
+  9: 'LUVISSOLO',
+  10: 'NITOSSOLO',
+  11: 'ESPODOSSOLO',
+  12: 'ARGISSOLO',
+  13: 'ORGANOSSOLO',
+  14: 'CAMBISSOLO',
+  15: 'NEOSSOLO_FLUVICO',
+  16: 'NEOSSOLO_QUARTZARENICO',
+  17: 'NEOSSOLO_REGOLITICO',
+  18: 'NEOSSOLO_LITOLICO'
+  // 19: 'AGUA' //EXCLUIDA
+});
+
+var valoresDasClasses = [
+   1,  2,  3,  4,  5, 6, 7,  8,  9, 10,
+  11, 12, 13, 14, 15, 16, 17, 18 
+];
+
+var regiaoDeExportacao = minhaImagem.geometry().bounds();
+
+var imagemDummies = ee.Image(ee.List(valoresDasClasses).iterate(
+  function(valorAtual, imagemAnterior) {
+    var imgAnterior = ee.Image(imagemAnterior);
+    var valor = ee.Number(valorAtual);
+    
+    var nomeDaBanda = classesNomes.get(valor.format('%d'));
+    
+    var bandaDummy = minhaImagem.eq(valor)
+                            .rename([nomeDaBanda])
+                            .byte()
+                            .unmask()
+                            ;
+    
+    return imgAnterior.addBands(bandaDummy);
+  },
+  ee.Image().select()
+));
+
+
+
+
+print('Imagem de Saída (Dummies sem Água):', imagemDummies);
+
+Map.centerObject(regiaoDeExportacao, 6);
+Map.addLayer(minhaImagem, {min: 1, max: 19, palette: ['red', 'blue', 'green', 'yellow', 'purple', 'cyan']}, 'Imagem Original');
+Map.addLayer(imagemDummies, {min: 0, max: 1, bands: 'PLANOSSOLO'}, 'Dummy: PLANOSSOLO');
+Map.addLayer(imagemDummies, {min: 0, max: 1, bands: 'NEOSSOLO_LITOLICO'}, 'Dummy: NEOSSOLO_LITOLICO');
+
+/*
+var params = {
+  radius: 1000,
+  units: 'meters',
+};
+
+var interpolation = imagemDummies
+  .focalMax(params)
+  .focalMax(params)
+  .focalMax(params)
+  .unmask(0); 
+
+var imagemFinal = interpolation.blend(imagemDummies);
+
+print('Imagem Final (com Interpolação):', imagemFinal);
+Map.addLayer(imagemFinal, {min: 0, max: 1, bands: 'PLANOSSOLO'}, 'PLANOSSOLO (Interpolado)');
+*/
+
+var description = 'IBGE_2023_PEDOLOGIA_250MIL_2025'; 
+var assetId = 'projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/' + description;
+
+Export.image.toAsset({
+  image: imagemDummies.set({ 
+    'description': 'Imagem pedologia BDIA com 18 classes (sem água e afloramento) convertidas para dummy.',
+  }),  
+  description: description,
+  assetId: assetId,  
+  pyramidingPolicy: 'mode', 
+  region: regiaoDeExportacao,  
+  scale: 30, 
+  maxPixels: 1e11,
+});
+
