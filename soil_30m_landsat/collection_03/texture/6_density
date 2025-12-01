@@ -1,0 +1,259 @@
+/******************************************************************************
+ * MapBiomas Solo — Densidades — densidade da rocha e densidade da fração fina
+ * ----------------------------------------------------------------------------
+ * Objetivo
+ *   - Gerar mapa integrado de densidade da rocha (ρr), derivado de subprovíncias
+ *     geológicas codificadas, e mapas de densidade da fração fina (ρ_fina) em
+ *     profundidades de 10 cm, calculados a partir das frações de areia e argila,
+ *     produzindo um empilhamento final com três componentes: ρr, ρ_fina e
+ *     ρ_fina_prev.
+ * Saída (asset)
+ *   - projects/mapbiomas-workspace/SOLOS/PRODUTOS_C03/psd_final/densidades
+ * Bandas exportadas (ordem fixa ou derivada)
+ *   - densidade_rocha; tipo: float32; domínio típico: ~{2.0–2.8}
+ *   - dens_fina_000_010cm … dens_fina_090_100cm; tipo: float32; domínio típico: ~{1.0–2.6}
+ *   - dens_fina_prev_000_010cm … dens_fina_prev_090_100cm; tipo: float32; domínio típico: ~{1.0–2.6}
+ * Regras de inclusão
+ *   - A densidade da rocha (ρr) é calculada multiplicando bandas binárias de
+ *     subprovíncias por valores constantes de densidade específicos e somando
+ *     todas as contribuições.
+ *   - A densidade da fração fina (ρ_fina) é calculada por profundidade com:
+ *       ρ = 0.003208·areia + (−0.002013)·argila + 1.286,
+ *     aplicada separadamente para os 10 intervalos de 10 cm.
+ *   - A versão “prev” repete o cálculo utilizando os conjuntos alternativos
+ *     (psd/areia e psd/argila).
+ *   - Os valores de ρ_fina e ρ_fina_prev são arredondados para duas casas
+ *     decimais por multiplicação, arredondamento e divisão.
+ *   - Empilhamento final em uma única imagem contendo ρr, ρ_fina e ρ_fina_prev,
+ *     clipado ao limite dos biomas e exportado a 30 m.
+ * Autoria
+ *   - MapBiomas Solo — contato@mapbiomas.org
+ *   - Versão: 2025-12-01 Taciara
+ ******************************************************************************/
+
+var assetId = 'projects/mapbiomas-workspace/SOLOS/PRODUTOS_C03/psd_final/densidades'
+
+var aoi = ee.FeatureCollection(
+  'projects/mapbiomas-workspace/AUXILIAR/biomas_IBGE_250mil'
+).geometry();
+
+var subprov = ee.Image(
+  'projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/IBGE_2025_SUBPROVINCIAS_LEG_1'
+);
+
+/************************************************************
+ * Separar bandas 
+ ************************************************************/
+var sp_sedimentos     = subprov.select('SEDIMENTOS').rename('sp_sedimentos');
+var sp_sedimentares   = subprov.select('SEDIMENTARES').rename('sp_sedimentares');
+var sp_vulcanicas     = subprov.select('VULCANICAS').rename('sp_vulcanicas');
+var sp_plutonicas     = subprov.select('PLUTONICAS').rename('sp_plutonicas');
+var sp_metamorficas   = subprov.select('METAMORFICAS').rename('sp_metamorficas');
+var sp_sed_ign_met    = subprov.select('SED_IGN_MET').rename('sp_sed_ign_met');
+var sp_sed_ign        = subprov.select('SED_IGN').rename('sp_sed_ign');
+var sp_ign_met        = subprov.select('IGN_MET').rename('sp_ign_met');
+
+/************************************************************
+ * Dicionário com densidades (ρr)
+ ************************************************************/
+var rhoDict = ee.Dictionary({
+  'SEDIMENTOS':   2.00,
+  'SEDIMENTARES': 2.30,
+  'VULCANICAS':   2.74,
+  'PLUTONICAS':   2.66,
+  'METAMORFICAS': 2.70,
+  'SED_IGN_MET':  2.60,
+  'SED_IGN':      2.57,
+  'IGN_MET':      2.70
+});
+
+/************************************************************
+ * Criar layers constantes de densidade
+ ************************************************************/
+var d_sedimentos     = ee.Image.constant(rhoDict.get('SEDIMENTOS')).rename('d_sedimentos');
+var d_sedimentares   = ee.Image.constant(rhoDict.get('SEDIMENTARES')).rename('d_sedimentares');
+var d_vulcanicas     = ee.Image.constant(rhoDict.get('VULCANICAS')).rename('d_vulcanicas');
+var d_plutonicas     = ee.Image.constant(rhoDict.get('PLUTONICAS')).rename('d_plutonicas');
+var d_metamorficas   = ee.Image.constant(rhoDict.get('METAMORFICAS')).rename('d_metamorficas');
+var d_sed_ign_met    = ee.Image.constant(rhoDict.get('SED_IGN_MET')).rename('d_sed_ign_met');
+var d_sed_ign        = ee.Image.constant(rhoDict.get('SED_IGN')).rename('d_sed_ign');
+var d_ign_met        = ee.Image.constant(rhoDict.get('IGN_MET')).rename('d_ign_met');
+
+/************************************************************
+ * Multiplicar cada constante pelo respectivo layer da subprovíncia
+ ************************************************************/
+var rho_sedimentos     = sp_sedimentos    .multiply(d_sedimentos);
+var rho_sedimentares   = sp_sedimentares  .multiply(d_sedimentares);
+var rho_vulcanicas     = sp_vulcanicas    .multiply(d_vulcanicas);
+var rho_plutonicas     = sp_plutonicas    .multiply(d_plutonicas);
+var rho_metamorficas   = sp_metamorficas  .multiply(d_metamorficas);
+var rho_sed_ign_met    = sp_sed_ign_met   .multiply(d_sed_ign_met);
+var rho_sed_ign        = sp_sed_ign       .multiply(d_sed_ign);
+var rho_ign_met        = sp_ign_met       .multiply(d_ign_met);
+
+/************************************************************
+ * Somar todas as contribuições → mapa final de densidade da rocha
+ ************************************************************/
+var dens_rocha = rho_sedimentos
+  .add(rho_sedimentares)
+  .add(rho_vulcanicas)
+  .add(rho_plutonicas)
+  .add(rho_metamorficas)
+  .add(rho_sed_ign_met)
+  .add(rho_sed_ign)
+  .add(rho_ign_met)
+  .rename('densidade_rocha');
+
+/************************************************************
+ * Visualização 
+ ************************************************************/
+Map.addLayer(dens_rocha, {min: 2.0, max: 2.8, palette: ['003c30','01665e','35978f','a6dba0']}, 
+             'Densidade da Rocha (ρr)');
+
+/******************************************************
+ * Densidade da fração fina (ρ_fina)
+ * ρ = 0.003208 * areia  +  (–0.002013) * argila  + 1.286
+ ******************************************************/
+
+// Versão principal (psd_final)
+var areia_img  = ee.Image('projects/mapbiomas-workspace/SOLOS/PRODUTOS_C03/psd_final/areia');
+var argila_img = ee.Image('projects/mapbiomas-workspace/SOLOS/PRODUTOS_C03/psd_final/argila');
+
+/******************************************************
+ * Bandas de profundidade (nomes exatos)
+ ******************************************************/
+var depths = [
+  '000_010cm', '010_020cm', '020_030cm', '030_040cm',
+  '040_050cm', '050_060cm', '060_070cm', '070_080cm',
+  '080_090cm', '090_100cm'
+];
+
+/******************************************************
+ * Cálculo banda a banda — extremamente leve
+ ******************************************************/
+var dens_terrafina = ee.Image.cat(
+  areia_img.select('areia_000_010cm').multiply(0.003208)
+    .add(argila_img.select('argila_000_010cm').multiply(-0.002013))
+    .add(1.286).rename('dens_fina_000_010cm'),
+
+  areia_img.select('areia_010_020cm').multiply(0.003208)
+    .add(argila_img.select('argila_010_020cm').multiply(-0.002013))
+    .add(1.286).rename('dens_fina_010_020cm'),
+
+  areia_img.select('areia_020_030cm').multiply(0.003208)
+    .add(argila_img.select('argila_020_030cm').multiply(-0.002013))
+    .add(1.286).rename('dens_fina_020_030cm'),
+
+  areia_img.select('areia_030_040cm').multiply(0.003208)
+    .add(argila_img.select('argila_030_040cm').multiply(-0.002013))
+    .add(1.286).rename('dens_fina_030_040cm'),
+
+  areia_img.select('areia_040_050cm').multiply(0.003208)
+    .add(argila_img.select('argila_040_050cm').multiply(-0.002013))
+    .add(1.286).rename('dens_fina_040_050cm'),
+
+  areia_img.select('areia_050_060cm').multiply(0.003208)
+    .add(argila_img.select('argila_050_060cm').multiply(-0.002013))
+    .add(1.286).rename('dens_fina_050_060cm'),
+
+  areia_img.select('areia_060_070cm').multiply(0.003208)
+    .add(argila_img.select('argila_060_070cm').multiply(-0.002013))
+    .add(1.286).rename('dens_fina_060_070cm'),
+
+  areia_img.select('areia_070_080cm').multiply(0.003208)
+    .add(argila_img.select('argila_070_080cm').multiply(-0.002013))
+    .add(1.286).rename('dens_fina_070_080cm'),
+
+  areia_img.select('areia_080_090cm').multiply(0.003208)
+    .add(argila_img.select('argila_080_090cm').multiply(-0.002013))
+    .add(1.286).rename('dens_fina_080_090cm'),
+
+  areia_img.select('areia_090_100cm').multiply(0.003208)
+    .add(argila_img.select('argila_090_100cm').multiply(-0.002013))
+    .add(1.286).rename('dens_fina_090_100cm')
+).toFloat();
+
+
+
+// Versão alternativa (psd)
+var areia_prev  = ee.Image('projects/mapbiomas-workspace/SOLOS/PRODUTOS_C03/psd/areia');
+var argila_prev = ee.Image('projects/mapbiomas-workspace/SOLOS/PRODUTOS_C03/psd/argila');
+
+var dens_terrafina_prev = ee.Image.cat(
+  areia_prev.select('areia_000_010cm').multiply(0.003208)
+    .add(argila_prev.select('argila_000_010cm').multiply(-0.002013))
+    .add(1.286).rename('dens_fina_000_010cm'),
+
+  areia_prev.select('areia_010_020cm').multiply(0.003208)
+    .add(argila_prev.select('argila_010_020cm').multiply(-0.002013))
+    .add(1.286).rename('dens_fina_010_020cm'),
+
+  areia_prev.select('areia_020_030cm').multiply(0.003208)
+    .add(argila_prev.select('argila_020_030cm').multiply(-0.002013))
+    .add(1.286).rename('dens_fina_020_030cm'),
+
+  areia_prev.select('areia_030_040cm').multiply(0.003208)
+    .add(argila_prev.select('argila_030_040cm').multiply(-0.002013))
+    .add(1.286).rename('dens_fina_030_040cm'),
+
+  areia_prev.select('areia_040_050cm').multiply(0.003208)
+    .add(argila_prev.select('argila_040_050cm').multiply(-0.002013))
+    .add(1.286).rename('dens_fina_040_050cm'),
+
+  areia_prev.select('areia_050_060cm').multiply(0.003208)
+    .add(argila_prev.select('argila_050_060cm').multiply(-0.002013))
+    .add(1.286).rename('dens_fina_050_060cm'),
+
+  areia_prev.select('areia_060_070cm').multiply(0.003208)
+    .add(argila_prev.select('argila_060_070cm').multiply(-0.002013))
+    .add(1.286).rename('dens_fina_060_070cm'),
+
+  areia_prev.select('areia_070_080cm').multiply(0.003208)
+    .add(argila_prev.select('argila_070_080cm').multiply(-0.002013))
+    .add(1.286).rename('dens_fina_070_080cm'),
+
+  areia_prev.select('areia_080_090cm').multiply(0.003208)
+    .add(argila_prev.select('argila_080_090cm').multiply(-0.002013))
+    .add(1.286).rename('dens_fina_080_090cm'),
+
+  areia_prev.select('areia_090_100cm').multiply(0.003208)
+    .add(argila_prev.select('argila_090_100cm').multiply(-0.002013))
+    .add(1.286).rename('dens_fina_090_100cm')
+).toFloat();
+
+// arredondar terra fina e terra fina prev
+var densidade_terrafina = dens_terrafina
+  .multiply(100).round().divide(100);
+
+var densidade_terrafina_prev = dens_terrafina_prev
+  .multiply(100).round().divide(100);
+  
+// -----------------------------------------------------------
+// [D] Empilhar e inspecionar
+// -----------------------------------------------------------
+var densidades = dens_rocha
+  .addBands(densidade_terrafina)
+  .addBands(densidade_terrafina_prev)
+  .clip(aoi);
+
+// Visualização simples (opcional)
+Map.addLayer(dens_rocha,          {min:2.0, max:2.8}, 'densidade_rocha');
+Map.addLayer(densidade_terrafina,      {min:1.0, max:2.6}, 'densidade_terrafina', false);
+Map.addLayer(densidade_terrafina_prev, {min:1.0, max:2.6}, 'densidade_terrafina_prev', false);
+
+// -----------------------------------------------------------
+// Exportar para Asset 
+// -----------------------------------------------------------
+
+var aoi_test = ee.Geometry.Rectangle([-74, -35, -32, 5], null, false); // BR envelope
+
+Export.image.toAsset({
+  image: densidades,
+  description: 'densidades',
+  assetId: 'projects/mapbiomas-workspace/SOLOS/PRODUTOS_C03/psd_final/densidades',
+  region: aoi_test,
+  scale: 30,
+  maxPixels: 1e13
+});
+
+
