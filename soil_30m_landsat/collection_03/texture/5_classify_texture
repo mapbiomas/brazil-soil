@@ -1,0 +1,311 @@
+/******************************************************************************
+ * MapBiomas Solo — Textura do solo — agregação vertical e classificação textural
+ * ----------------------------------------------------------------------------
+ * Objetivo
+ *   - Integrar verticalmente frações granulométricas (areia, silte, argila) em
+ *     janelas padronizadas de profundidade e gerar mapas de grupo, subgrupo e
+ *     classe textural (L1, L2, L3) em múltiplas profundidades, com máscara por
+ *     profundidade efetiva do solo e disponibilidade de PSD, para toda a área
+ *     dos biomas brasileiros.
+ * Entradas (assets)
+ *   - projects/mapbiomas-workspace/SOLOS/PRODUTOS_C03/psd_final/areia_gbm_prev
+ *     (frações de areia em 10 camadas de 10 cm, valores em float)
+ *   - projects/mapbiomas-workspace/SOLOS/PRODUTOS_C03/psd_final/silte_gbm_prev
+ *     (frações de silte em 10 camadas de 10 cm, valores em float)
+ *   - projects/mapbiomas-workspace/SOLOS/PRODUTOS_C03/psd_final/argila_gbm_prev
+ *     (frações de argila em 10 camadas de 10 cm, valores em float)
+ *   - projects/mapbiomas-workspace/SOLOS/PRODUTOS_C03/psd_final/cascalho_gbm_prev
+ *     (frações de cascalho em 10 camadas de 10 cm, uso auxiliar/diagnóstico)
+ *   - projects/mapbiomas-workspace/SOLOS/PRODUTOS_C03/psd_final/profundidade_solo_c03_prev
+ *     (profundidade total do solo em cm — banda profundidade_solo_cm)
+ *   - projects/mapbiomas-workspace/AUXILIAR/biomas_IBGE_250mil
+ *     (limite espacial dos biomas brasileiros, usado como região de exportação)
+ * Saída (asset)
+ *   - projects/mapbiomas-workspace/SOLOS/PRODUTOS_C03/mapbiomas_soil_collection3_textural_group
+ *   - projects/mapbiomas-workspace/SOLOS/PRODUTOS_C03/mapbiomas_soil_collection3_textural_subgroup
+ *   - projects/mapbiomas-workspace/SOLOS/PRODUTOS_C03/mapbiomas_soil_collection3_textural_class
+ * Autoria
+ *   - MapBiomas Solo — contato@mapbiomas.org
+ *   - Versão: 2025-11-20 Taciara
+ ******************************************************************************/
+ 
+var version = 'c03_texture_v2025_11_20';
+var collPath = 'projects/mapbiomas-workspace/SOLOS/PRODUTOS_C03/psd_final';
+var saidaPath = 'projects/mapbiomas-workspace/SOLOS/PRODUTOS_C03';
+var biomas = ee.FeatureCollection('projects/mapbiomas-workspace/AUXILIAR/biomas_IBGE_250mil').geometry().bounds();
+
+/************************************************************
+ * 1. Carregar frações originais (float, sem round, sem fechamento)
+ ************************************************************/
+var sandImg  = ee.Image(collPath + '/areia_gbm_prev');
+var siltImg  = ee.Image(collPath + '/silte_gbm_prev');
+var clayImg  = ee.Image(collPath + '/argila_gbm_prev');
+var gravelImg = ee.Image(collPath + '/cascalho_gbm_prev');
+
+/************************************************************
+ * 2. Listas de bandas de 10 cm
+ ************************************************************/
+var sandBands = [
+  'areia_000_010cm','areia_010_020cm','areia_020_030cm','areia_030_040cm',
+  'areia_040_050cm','areia_050_060cm','areia_060_070cm','areia_070_080cm',
+  'areia_080_090cm','areia_090_100cm'
+];
+
+var siltBands = [
+  'silte_000_010cm','silte_010_020cm','silte_020_030cm','silte_030_040cm',
+  'silte_040_050cm','silte_050_060cm','silte_060_070cm','silte_070_080cm',
+  'silte_080_090cm','silte_090_100cm'
+];
+
+var clayBands = [
+  'argila_000_010cm','argila_010_020cm','argila_020_030cm','argila_030_040cm',
+  'argila_040_050cm','argila_050_060cm','argila_060_070cm','argila_070_080cm',
+  'argila_080_090cm','argila_090_100cm'
+];
+
+
+/************************************************************
+ *  Integração vertical
+ ************************************************************/
+var idx = {
+  D000_010: [0],
+  D000_020: [0,1],
+  D000_030: [0,1,2],
+  D020_040: [2,3],
+  D030_060: [3,4,5],
+  D060_100: [6,7,8,9]
+};
+
+/************************************************************
+ * Função auxiliar: média float de bandas
+ ************************************************************/
+function depthMean(img, list, newName) {
+  return img.select(list).reduce(ee.Reducer.mean()).rename(newName);
+}
+
+/************************************************************
+ * Criar frações integradas (float)
+ ************************************************************/
+function integrate(img, bands, prefix) {
+
+  return ee.Image.cat([
+    img.select(bands[0]).rename(prefix + '_000_010cm'),
+
+    img.select([bands[0], bands[1]])
+       .reduce(ee.Reducer.mean())
+       .rename(prefix + '_000_020cm'),
+
+    img.select([bands[0], bands[1], bands[2]])
+       .reduce(ee.Reducer.mean())
+       .rename(prefix + '_000_030cm'),
+
+    img.select([bands[2], bands[3]])
+       .reduce(ee.Reducer.mean())
+       .rename(prefix + '_020_040cm'),
+
+    img.select([bands[3], bands[4], bands[5]])
+       .reduce(ee.Reducer.mean())
+       .rename(prefix + '_030_060cm'),
+
+    img.select([bands[6], bands[7], bands[8], bands[9]])
+       .reduce(ee.Reducer.mean())
+       .rename(prefix + '_060_100cm')
+  ]);
+}
+
+var sandAgg = integrate(sandImg, sandBands, 'areia');
+var siltAgg = integrate(siltImg, siltBands, 'silte');
+var clayAgg = integrate(clayImg, clayBands, 'argila');
+
+/************************************************************
+ * Seleção das bandas agregadas
+ ************************************************************/
+var sand = {
+  d10:  sandAgg.select('areia_000_010cm'),
+  d20:  sandAgg.select('areia_000_020cm'),
+  d30:  sandAgg.select('areia_000_030cm'),
+  d40:  sandAgg.select('areia_020_040cm'),
+  d60:  sandAgg.select('areia_030_060cm'),
+  d100: sandAgg.select('areia_060_100cm')
+};
+
+var silt = {
+  d10:  siltAgg.select('silte_000_010cm'),
+  d20:  siltAgg.select('silte_000_020cm'),
+  d30:  siltAgg.select('silte_000_030cm'),
+  d40:  siltAgg.select('silte_020_040cm'),
+  d60:  siltAgg.select('silte_030_060cm'),
+  d100: siltAgg.select('silte_060_100cm')
+};
+
+var clay = {
+  d10:  clayAgg.select('argila_000_010cm'),
+  d20:  clayAgg.select('argila_000_020cm'),
+  d30:  clayAgg.select('argila_000_030cm'),
+  d40:  clayAgg.select('argila_020_040cm'),
+  d60:  clayAgg.select('argila_030_060cm'),
+  d100: clayAgg.select('argila_060_100cm')
+};
+
+/************************************************************
+ * Biblioteca de classificadores
+ ************************************************************/
+var texLib = require(
+  'users/taciaraz/mapbiomas_solo:collection3/psd/4_func_classify-NOT-EDIT'
+);
+
+/************************************************************
+ * Função de classificação por profundidade
+ ************************************************************/
+function classifyDepthSimple(sBand, siBand, cBand, code) {
+
+  // empilhamento mínimo possível
+  var img = ee.Image.cat([
+    sBand.rename('sand'),
+    siBand.rename('silt'),
+    cBand.rename('clay')
+  ]);
+
+  // classificar sem operações redundantes
+  var grp = texLib.classify_grup(
+      img, {sand:'sand', silt:'silt', clay:'clay'},
+      'textural_group_' + code).int8();
+
+  var sub = texLib.classify_subgrup(
+      img, {sand:'sand', silt:'silt', clay:'clay'},
+      'textural_subgroup_' + code).int8();
+
+  var cls = texLib.classify_textural_group(
+      img, {sand:'sand', silt:'silt', clay:'clay'},
+      'textural_class_' + code).int8();
+
+  return ee.Image.cat([grp, sub, cls]);
+}
+/************************************************************
+ * Classificação (L1, L2, L3) — somente nos agregados
+ ************************************************************/
+
+var out10  = classifyDepthSimple(sand.d10,  silt.d10,  clay.d10,  '000_010cm');
+var out20  = classifyDepthSimple(sand.d20,  silt.d20,  clay.d20,  '000_020cm');
+var out30  = classifyDepthSimple(sand.d30,  silt.d30,  clay.d30,  '000_030cm');
+var out40  = classifyDepthSimple(sand.d40,  silt.d40,  clay.d40,  '020_040cm');
+var out60  = classifyDepthSimple(sand.d60,  silt.d60,  clay.d60,  '030_060cm');
+var out100 = classifyDepthSimple(sand.d100, silt.d100, clay.d100, '060_100cm');
+
+/************************************************************
+ * Imagens finais multibanda
+ ************************************************************/
+
+var GROUP = ee.Image.cat([
+  out10.select('textural_group_000_010cm'),
+  out20.select('textural_group_000_020cm'),
+  out30.select('textural_group_000_030cm'),
+  out40.select('textural_group_020_040cm'),
+  out60.select('textural_group_030_060cm'),
+  out100.select('textural_group_060_100cm')
+]);
+
+var SUBGROUP = ee.Image.cat([
+  out10.select('textural_subgroup_000_010cm'),
+  out20.select('textural_subgroup_000_020cm'),
+  out30.select('textural_subgroup_000_030cm'),
+  out40.select('textural_subgroup_020_040cm'),
+  out60.select('textural_subgroup_030_060cm'),
+  out100.select('textural_subgroup_060_100cm')
+])
+
+var CLASS = ee.Image.cat([
+  out10.select('textural_class_000_010cm'),
+  out20.select('textural_class_000_020cm'),
+  out30.select('textural_class_000_030cm'),
+  out40.select('textural_class_020_040cm'),
+  out60.select('textural_class_030_060cm'),
+  out100.select('textural_class_060_100cm')
+]);
+
+
+
+/************************************************************
+ * Máscaras 
+ ************************************************************/
+ // --- Profundidade ---
+
+var prof = ee.Image('projects/mapbiomas-workspace/SOLOS/PRODUTOS_C03/psd_final/profundidade_solo_c03_prev');
+var profTot = prof.select('profundidade_solo_cm');
+
+var bandas_textura_grup = [
+  'textural_group_000_010cm','textural_group_000_020cm','textural_group_000_030cm',
+  'textural_group_020_040cm','textural_group_030_060cm','textural_group_060_100cm'
+];
+
+var bandas_textura_sub = [
+  'textural_subgroup_000_010cm','textural_subgroup_000_020cm','textural_subgroup_000_030cm',
+  'textural_subgroup_020_040cm','textural_subgroup_030_060cm','textural_subgroup_060_100cm'
+  
+];
+
+var bandas_textura_class = [
+  'textural_class_000_010cm','textural_class_000_020cm','textural_class_000_030cm',
+  'textural_class_020_040cm','textural_class_030_060cm','textural_class_060_100cm'
+];
+
+ // Textura — janelas variáveis
+function aplicaRegraTextura(img, nome) {
+  var fim = ee.Number.parse(nome.slice(nome.length - 5, nome.length - 2));
+  var cond = profTot.gte(fim);
+  return img.where(cond.not(), 1);
+}
+
+// 1. Aplicar regra de profundidade (mantém 0 como válido dentro do Brasil)
+var grupFinal = ee.Image.cat(bandas_textura_grup.map(function(b){
+  return aplicaRegraTextura(GROUP.select(b), b);
+})).rename(bandas_textura_grup);
+
+var subFinal = ee.Image.cat(bandas_textura_sub.map(function(b){
+  return aplicaRegraTextura(SUBGROUP.select(b), b);
+})).rename(bandas_textura_sub);
+
+var classFinal = ee.Image.cat(bandas_textura_class.map(function(b){
+  return aplicaRegraTextura(CLASS.select(b), b);
+})).rename(bandas_textura_class);
+
+
+
+var maskPSD = clayImg.select('argila_000_010cm').mask();
+
+grupFinal  = grupFinal.updateMask(maskPSD);
+subFinal   = subFinal.updateMask(maskPSD);
+classFinal = classFinal.updateMask(maskPSD);
+
+
+
+/************************************************************
+ *  Exportações
+ ************************************************************/
+ 
+function exportTexture(img, name) {
+
+  Export.image.toAsset({
+    image: img
+    .int16(),
+    description: 'Taciara-GTSOLO-' + name,
+    assetId: saidaPath + '/' + 'mapbiomas_soil_collection3_' + name,
+    region: biomas,
+    scale: 30,
+    maxPixels: 1e13,
+    pyramidingPolicy: {'.default': 'mode'}
+  });
+}
+
+exportTexture(grupFinal,'textural_group');
+exportTexture(subFinal, 'textural_subgroup');
+exportTexture(classFinal,'textural_class');
+
+
+// // // (opcional) conferir nomes das bandas
+// print('Bandas texture_group:', grupFinal.bandNames());
+// print('Bandas texture_subgroup:', subFinal.bandNames());
+// print('Bandas texture_class:', classFinal.bandNames());
+
+
+
