@@ -1,0 +1,302 @@
+///****************************************************************************
+// * MapBiomas Solo — Matriz de Treinamento PSD — Amostragem de Covariáveis
+// * ----------------------------------------------------------------------------
+// * Objetivo
+// *   - Gerar a matriz de treinamento de textura do solo (areia, silte, argila, esqueleto)
+// *     combinando amostras pontuais observadas com covariáveis ambientais estáticas
+// *     para posterior modelagem espacial (Coleção 3).
+// * Entradas (assets)
+// *   - projects/mapbiomas-workspace/SOLOS/AMOSTRAS/ORIGINAIS/collection3/ + version (soildata)
+// *     (pontos amostrais harmonizados com atributos granulométricos e profundidade)
+// *   - users/taciaraz/mapbiomas_solo:collection3/0_covariates/0_psd_covariate_source
+// *     (módulo que fornece pilha de covariáveis estáticas da Coleção 3)
+// * Saída (asset)
+// *   - projects/mapbiomas-workspace/SOLOS/AMOSTRAS/MATRIZES/collection3/ + export_name 
+// * Regras de inclusão
+// *   - A lista de bandas de covariáveis é definida explicitamente (selected_bandnames_static)
+// *     a partir da pilha estática fornecida pelo módulo require, permitindo adicionar ou
+// *     remover variáveis sem alteração estrutural do restante do fluxo.
+// *   - Para cada bloco de até 3000 pontos, executa-se amostragem espacial (sampleRegions) a 30 m,
+// *     transferindo ao ponto as covariáveis selecionadas e os atributos granulométricos
+// *     transformados (+1 e log-ratio), preservando geometria, id e profundidade.
+// *   - Cada bloco recebe rótulo chunk_id e todos os blocos são concatenados em uma única
+// *     FeatureCollection (fullTrainingMatrix).
+// *   - A matriz final é exportada como tabela de atributos para o Asset de saída definido em versão.
+// * Autoria
+// *   - MapBiomas Solo — contato@mapbiomas.org
+// *   - Versão: 2025-10-26 Taciara
+// *   - Versão: 2025-11-06 Taciara
+// *   - Versão: 2025-11-14 Taciara (filtro de pseudo-sand)
+// *   - Versão: 2025-11-16 Taciara (inclusao de novas covariáveis de ocorrencia simultanea)
+// ****************************************************************************/
+
+var version = '2025_11_16_soildata_psd';
+
+var export_name = 'c03_psd_v2025_11_18'; // matriz 18 com prev predictions + dados 16
+var assetId = 'projects/mapbiomas-workspace/SOLOS/AMOSTRAS/MATRIZES/collection3/';
+
+var covariatesStack = require(
+  'users/taciaraz/mapbiomas_solo:collection3/psd/0_psd_covariate_source');
+  
+// Amostras (SoilData / Coleção 3)
+var points = ee.FeatureCollection(
+  'projects/mapbiomas-workspace/SOLOS/AMOSTRAS/ORIGINAIS/collection3/' + version
+);
+
+// 2. organiza os atributos
+var points = points.map(function (pt) {
+  return ee.Feature(pt.geometry()).set({
+    'areia': pt.get('areia'),
+    'argila': pt.get('argila'),
+    'silte': pt.get('silte'),
+    'esqueleto1p': pt.get('esqueleto1p'),
+    'log_areia1p_argila1p': pt.get('log_areia1p_argila1p'),
+    'log_silte1p_argila1p': pt.get('log_silte1p_argila1p'),
+    'log_esqueleto1p_argila1p': pt.get('log_esqueleto1p_argila1p'),
+    'id': pt.get('id'),
+    'profundidade': pt.get('profundidade')
+  });
+});
+
+Map.addLayer(points, { color: 'ff0000' }, 'points');
+
+
+// COVARIATES
+/////////////////////
+// Covariáveis estáticas (Coleção 3)
+var covariatesStack_image = covariatesStack.static_covariates();
+
+// Auditoria de bandas disponíveis no módulo
+print('covariatesStack_image (pre select)', covariatesStack_image);
+
+// Seleção explícita de bandas utilizadas na matriz
+// ATENÇÃO: todos estes nomes precisam existir em covariatesStack_image
+
+var selected_bandnames_static = [
+  
+  // predição da coleção anterior
+  'sand_000_030cm',
+  'silt_000_030cm',
+  'clay_000_030cm',
+  'textura_l1_030cm',
+  
+  // classes de solo WRB (probabilidade)
+  // probabilidades unicas
+  'Ferralsols', 'Histosols', 'Nitisols', 'Vertisols', 'Plinthosols', 
+  // probabilidades agregadas
+  'Argisols', 'Humisols', 'Sandysols', 'Thinsols', 'Wetsols',
+
+  // Pedologia IBGE
+    'PLANOSSOLO', 'CHERNOSSOLO', 'LATOSSOLO', 'PLINTOSSOLO',
+    'GLEISSOLO', 'VERTISSOLO', 'LUVISSOLO', 'NITOSSOLO',
+    'ESPODOSSOLO', 'ARGISSOLO', 'ORGANOSSOLO', 'CAMBISSOLO',
+    'NEOSSOLO_FLUVICO', 'NEOSSOLO_QUARTZARENICO', 'NEOSSOLO_REGOLITICO', 'NEOSSOLO_LITOLICO',
+    
+    'sibcs_rasos',
+    'sibcs_btextural', 
+    'sibcs_esqueleto', 
+    'sibcs_homogeneo',
+    'sibcs_argiloso',
+
+  // black soils
+  'black_soil_prob',
+
+  // morfometria / relevo
+  'slope',
+  'convergence',
+  'cti',
+  'eastness',
+  'northness',
+  'roughness',
+  'spi',
+  'elev_stdev',
+  'dev_magnitude',
+  'dev_scale',
+  'cross_sectional',
+  'longitudinal_curvature',
+
+  // altitude
+  'elevation',
+
+  // clima Köppen
+  'koppen_l1_A',
+  'koppen_l2_Af',
+  'koppen_l2_Am',
+  'koppen_l2_As',
+  'koppen_l2_Aw',
+
+  'koppen_l1_B',
+  'koppen_l2_Bs',
+  'koppen_l3_Bsh',
+
+  'koppen_l1_C',
+  'koppen_l2_Cf',
+  'koppen_l3_Cfa',
+  'koppen_l3_Cfb',
+
+  'koppen_l2_Cw',
+  'koppen_l3_Cwa',
+  'koppen_l3_Cwb',
+  'koppen_l3_Cwc',
+
+  'koppen_l2_Cs',
+  'koppen_l3_Csa',
+  'koppen_l3_Csb',
+
+  // biomas IBGE
+  'Amazonia',
+  'Caatinga',
+  'Cerrado',
+  'Mata_Atlantica',
+  'Pampa',
+  'Pantanal',
+  'Zona_Costeira',
+
+  // fitofisionomias IBGE
+  'Campinarana',
+  'Estepe',
+  'Floresta_Estacional_Decidual',
+  'Floresta_Estacional_Semidecidual',
+  'Floresta_Estacional_Sempre_Verde', 
+  'Floresta_Ombrofila_Aberta',
+  'Floresta_Ombrofila_Densa',
+  'Floresta_Ombrofila_Mista',
+  'Formacao_Pioneira',
+  'Savana',
+  'Savana_Estepica',
+
+  // províncias estruturais (IBGE)
+  'Amazonas_Solimoes_Provincia',
+  'Amazonia_Provincia',
+  'Borborema_Provincia',
+  'Cobertura_Cenozoica_Provincia',
+  'Costeira_Margem_Continental_Provincia',
+  'Gurupi_Provincia',
+  'Mantiqueira_Provincia',
+  'Parana_Provincia',
+  'Parecis_Provincia',
+  'Parnaiba_Provincia',
+  'Reconcavo_Tucano_Jatoba_Provincia',
+  'Sao_Francisco_Provincia',
+  'Sao_Luis_Provincia',
+  'Tocantis_Provincia',
+
+  // subprovíncias
+  'sedimentos',
+  'sedimentares',
+  'vulcanicas',
+  'plutonicas',
+  'metamorficas',
+  
+  // ocorrencia conjunta de bioma e solo
+  'pantanal_plintossolo',
+  'pantanal_neossolo_quartzarenico',
+  'pantanal_gleissolo',
+  'pantanal_planossolo',
+  
+  'caatinga_latossolo',
+
+  // ocorrencia conjunta de solo e subprovincia 
+  'latossolo_vulcanicas',
+  'latossolo_sedimentares',
+  'latossolo_sedimentos',
+  'latossolo_metamorficas',
+  'latossolo_plutonicas',
+  
+  'argissolo_metamorficas',
+  'argissolo_sedimentares',
+  'argissolo_sedimentos',
+  
+  'raso_vulcanica',
+  'raso_sedimentares',
+  'raso_plutonica',
+
+  // ocorrencia conjunta de bioma e subprovincia   
+  'pantanal_sedimentos',
+  'amazonia_sedimentos',
+  'cerrado_sedimentos',
+  'pampa_sedimentos',
+  'caatinga_sedimentos',
+  'mata_atlantica_sedimentos',
+  
+// Distance
+  'Distance_to_sand_v33',
+  'Distance_to_rock_v33', // decisão final
+
+// Coordenadas
+  'latitude',
+  'longitude',
+  
+  // estabilidade hídrica (alagamento recorrente)
+  'Water_40y_recurrence'
+];
+
+// imagem final só com as bandas desejadas
+var static_covariates = covariatesStack_image.select(selected_bandnames_static);
+print('static_covariates (após select)', static_covariates);
+
+// parâmetros do fatiamento
+var chunkSize = 3000;  // nº de pontos por bloco
+var nTotal = points.size();          // total de feições
+var nChunks = nTotal.divide(chunkSize).ceil();  // quantos blocos
+
+print('Total de pontos:', nTotal);
+print('Número de blocos:', nChunks);
+
+// função que processa um bloco (chunkIndex = 0,1,2,...)
+var makeChunkSample = function(chunkIndex) {
+  chunkIndex = ee.Number(chunkIndex);
+
+  var start = chunkIndex.multiply(chunkSize);        // índice inicial
+  var end = start.add(chunkSize);                    // índice final (exclusivo)
+
+  // recorta esse bloco de pontos usando toList
+  var subList = points.toList(chunkSize, start);
+  var subFc = ee.FeatureCollection(subList);
+
+  // roda sampleRegions nesse bloco
+  var subSample = static_covariates.sampleRegions({
+    collection: subFc,
+    properties: [
+      'areia',
+      'argila',
+      'silte',
+      'esqueleto',
+      'log_areia1p_argila1p',
+      'log_silte1p_argila1p',
+      'log_esqueleto1p_argila1p',
+      'id',
+      'profundidade'
+    ],
+    scale: 30,
+    geometries: true
+  });
+
+  // marca qual chunk gerou aquilo (útil debug)
+  subSample = subSample.map(function(f) {
+    return f.set('chunk_id', chunkIndex);
+  });
+
+  return subSample; // FeatureCollection
+};
+
+// gera lista [0, 1, 2, ..., nChunks-1]
+var indices = ee.List.sequence(0, nChunks.subtract(1));
+
+// mapeia cada índice -> FeatureCollection amostrada
+var sampledChunks = indices.map(function(i) {
+  return makeChunkSample(i);
+});
+
+// achata tudo de volta em UMA FeatureCollection só
+var fullTrainingMatrix = ee.FeatureCollection(sampledChunks).flatten();
+
+print('fullTrainingMatrix preview:', fullTrainingMatrix.limit(2));
+print('fullTrainingMatrix size:', fullTrainingMatrix.size());
+
+// 5. exporta direto pro asset
+Export.table.toAsset({
+  collection: fullTrainingMatrix,
+  description: version + export_name,
+  assetId: assetId + export_name
+});
