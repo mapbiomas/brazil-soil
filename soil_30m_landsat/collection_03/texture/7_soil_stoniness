@@ -1,0 +1,306 @@
+
+/******************************************************************************
+ * MapBiomas Solo — Profundidade do solo — limite por pedregosidade dominante e extrema
+ * ----------------------------------------------------------------------------
+ * Objetivo
+ *   - Gerar mapas multibanda de profundidade até limite de fragmentos grossos do solo definidos por:
+ *       (i) profundidade até pedregosidade dominante (vol ≥ 50%);
+ *       (ii) profundidade até pedregosidade extrema (vol ≥ 90%),
+ *     usando cascalho em % volume derivado de fração fina e esqueleto, para
+ *     estimar o primeiro horizonte limitante entre 0–100 cm.
+ * Entradas (assets)
+ *   - projects/mapbiomas-workspace/SOLOS/PRODUTOS_C03/psd_final/cascalho
+ *     (fração esquelética em % massa nas profundidades 0–100 cm)
+ *   - projects/mapbiomas-workspace/SOLOS/PRODUTOS_C03/psd_final/densidades
+ *     (densidade da rocha e densidade da fração fina em 10 profundidades)
+ *   - projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/MB_2023_C90_WATER/
+ *       MB_WATER_WATER_SURFACE_MASK_2023
+ *     (máscara de água para remoção de áreas inundadas)
+ *   - projects/mapbiomas-workspace/AUXILIAR/biomas_IBGE_250mil
+ *     (limite espacial para recorte)
+ * Saída (asset)
+ *   - projects/mapbiomas-workspace/SOLOS/PRODUTOS_C03/mapbiomas_soil_collection3_stoniness
+ * Bandas exportadas (ordem fixa ou derivada)
+ *   - soildepth_stone50vol_cm; tipo: int16; domínio: {0–100}
+ *   - soildepth_stone90vol_cm; tipo: int16; domínio: {0–100}
+ * Regras de inclusão
+ *   - Conversão cascalho (% massa) → cascalho (% volume) por camada:
+ *       cascalho_vol = (G/ρr) / [(G/ρr) + ((100–G)/ρf)] × 100,
+ *     onde G é % massa de cascalho, ρr densidade da rocha e ρf densidade da
+ *     fração fina correspondente à mesma profundidade.
+ *   - Determinação do limite pedregoso dominante (D50):
+ *       primeira camada, entre 0–100 cm, em que cascalho_vol ≥ 50%;
+ *       se nenhuma camada atinge 50%, o valor é 100 cm.
+ *   - Determinação do limite pedregoso extremo (D90):
+ *       primeira camada, entre 0–100 cm, em que cascalho_vol ≥ 90%;
+ *       se nenhuma camada atinge 90%, o valor é 100 cm.
+ *   - Máscara: remoção de pixels classificados como água (valor 1 na máscara).
+ *   - Limitação espacial: recorte ao envelope do Brasil ou área definida (aoi),
+ *     resolução 30 m e exportação com política padrão (maxPixels = 1e13).
+ * Autoria
+ *   - MapBiomas Solo — contato@mapbiomas.org
+ *   - Versão: 2025-11-18 Taciara
+ ******************************************************************************/
+
+
+var version = 'c03_psd_v2025_11_26' 
+var collPath = 'projects/mapbiomas-workspace/SOLOS/PRODUTOS_C03';
+
+// ======================================================
+// [A] AOI (recorte para reduzir custo por tile)
+// ======================================================
+//var aoi = ee.FeatureCollection('projects/mapbiomas-workspace/AUXILIAR/biomas_IBGE_250mil').geometry();
+var aoi = ee.Geometry.Polygon(
+  [[[-74, -34],
+    [-74,   6],
+    [-34,   6],
+    [-34, -34]]],
+  null,
+  false
+); 
+// ======================================================
+// [A1] IMPORTAR IMAGENS DA FRAÇÃO FINA E ESQUELETO
+// ======================================================
+
+// Frações em % massa (10 bandas)
+var map_esqueleto = ee.Image('projects/mapbiomas-workspace/SOLOS/PRODUTOS_C03/psd_final/cascalho');
+
+// Densidades (uma imagem multibanda)
+var densidades = ee.Image('projects/mapbiomas-workspace/SOLOS/PRODUTOS_C03/psd_final/densidades');
+
+// Densidade da rocha (1 banda)
+var rho_rocha = densidades.select('densidade_rocha');
+
+// Densidade da fração fina (10 bandas)
+var rho_fina = densidades.select(densidades.bandNames()
+  .filter(ee.Filter.stringContains('item', 'dens_fina_'))
+);
+/************************************************************
+ * 2. Lista de profundidades padrão do MapBiomas Solo
+ ************************************************************/
+var depthBands = [
+  '000_010cm','010_020cm','020_030cm','030_040cm','040_050cm',
+  '050_060cm','060_070cm','070_080cm','080_090cm','090_100cm'
+];
+
+/************************************************************
+ * 3. Conversão cascalho % massa → % volume
+ *
+ *  Fórmula utilizada:
+ *     G = cascalho_massa
+ *     F = 100 - G
+ *     cascalho_vol = (G/ρr) / ( (G/ρr) + (F/ρf) )
+ ************************************************************/
+function calcCascalhoVol(depth) {
+
+  var G = map_esqueleto.select('cascalho_' + depth);            // % massa
+  var F = ee.Image(100).subtract(G);                            // % massa da fração fina
+  
+  var rho_f = rho_fina.select('dens_fina_' + depth);            // ρ fina da camada
+  
+  var termG = G.divide(rho_rocha);                              // G / ρr
+  var termF = F.divide(rho_f);                                  // F / ρf
+  
+  var cascalho_vol = termG.divide(termG.add(termF))             // razão volumétrica
+                          .multiply(100)                        // % volume
+                          .rename('cascalho_vol_' + depth);
+  
+  return cascalho_vol;
+}
+
+/************************************************************
+ * 4. Aplicar para todas as profundidades e empilhar
+ ************************************************************/
+var cascalhoVolList = depthBands.map(calcCascalhoVol);
+
+var cascalho_vol = ee.ImageCollection.fromImages(cascalhoVolList)
+                    .toBands()
+                    .rename(depthBands.map(function(d){ return 'cascalho_vol_' + d; }));
+
+
+/************************************************************
+ * 5. Resultado final
+ ************************************************************/
+print('Cascalho em % volume (10 bandas):', cascalho_vol);
+
+
+/************************************************************
+ * 2. Camada limitante com valor máximo = 100 cm
+ *   - 0 cm   → limite na camada 0–10 cm (afloramento)
+ *   - 10 cm  → limite na camada 10–20 cm
+ *   - ...
+ *   - 90 cm  → limite na camada 90–100 cm
+ *   - 100 cm → não existe limite ≥50% até 100 cm
+ ************************************************************/
+
+
+// Topo das camadas (em cm)
+var depthTop = [0,10,20,30,40,50,60,70,80,90];
+
+
+/************************************************************
+ * 1. Criar imagens indicando profundidade onde >=50% = profundidade efetiva
+ ************************************************************/
+// Lista para acumular imagens tipo máscara
+var limitImages = depthBands.map(function(d, idx){
+
+  var band = 'cascalho_vol_' + d;
+
+  // Retorna topo da camada se >= 50%, caso contrário retorna 999
+  var img = cascalho_vol.select(band)
+    .gte(50)
+    .multiply(depthTop[idx])             // se TRUE → topo real
+    .add(                                   
+      cascalho_vol.select(band)
+        .lt(50)
+        .multiply(999)                  // se FALSE → 999
+    )
+    .rename('tmp_' + d);
+
+  return img;
+});
+
+// Empilhar
+var limitStack = ee.ImageCollection.fromImages(limitImages).toBands();
+
+// Escolher o MENOR valor (primeira camada real)
+var prof_raw = limitStack.reduce(ee.Reducer.min());
+
+// Onde valor = 999 significa "sem limite até 100 cm"
+var profundidade_efetiva_cm = prof_raw.where(prof_raw.eq(999), 100)
+                                      .rename('profundidade_efetiva_cm');
+
+
+print('Profundidade Efetiva (cm):', profundidade_efetiva_cm);
+
+/************************************************************
+ * 3. PROFUNDIDADE ATÉ CASCALHO_VOL = 100%
+ *
+ *  - 0 cm   → cascalho 100% já na primeira camada (afloramento)
+ *  - 10 cm  → cascalho 100% na camada 10–20 cm
+ *  - ...
+ *  - 90 cm  → cascalho 100% na camada 90–100 cm
+ *  - 100 cm → cascalho nunca atingiu 100% até 1 m
+ ************************************************************/
+
+/************************************************************
+ * PROFUNDIDADE ATÉ CASCALHO EXTREMO (cascalho_vol >= 95%)
+ * Primeira camada onde cascalho_vol >= 95 %
+ ************************************************************/
+
+// Lista de imagens por camada
+var dtotalImages = depthBands.map(function(d, idx) {
+
+  var band = 'cascalho_vol_' + d;
+
+  // Se cascalho >= 90% → retorna topo
+  // Se menor → retorna 999 (ignorado no min)
+  var img = cascalho_vol.select(band)
+    .gte(90)
+    .multiply(depthTop[idx])
+    .add(
+      cascalho_vol.select(band)
+        .lt(90)
+        .multiply(999)
+    )
+    .rename('dtotal_' + d);
+
+  return img;
+});
+
+// Empilhar todas as bandas
+var dtotalStack = ee.ImageCollection.fromImages(dtotalImages).toBands();
+
+// Primeiro topo válido = menor valor real
+var dtotal_raw = dtotalStack.reduce(ee.Reducer.min());
+
+// Substituir 999 por 100 cm (não atingiu limite até 1 m)
+var profundidade_solo_cm = dtotal_raw.where(dtotal_raw.eq(999), 100)
+                                     .rename('profundidade_solo_cm');
+
+print('Profundidade do Solo (>=90% cascalho):', profundidade_solo_cm);
+
+var cascalho_vol = cascalho_vol.round();
+
+// -----------------------------------------------------------
+// 2. MÁSCARAS: ÁGUA (MB Solo)
+// -----------------------------------------------------------
+
+// // Máscara de superfície de água (MapBiomas Solo – 2023)
+var waterMask = ee.Image(
+  'projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/MB_2023_C90_WATER/MB_WATER_WATER_SURFACE_MASK_2023'
+).select('classification_2023');
+
+// Água = 1 → remover
+var mask_water = waterMask.unmask(0).neq(1);
+// Aplicar a máscara a todos os mapas
+profundidade_solo_cm     = profundidade_solo_cm.updateMask(mask_water);
+profundidade_efetiva_cm     = profundidade_efetiva_cm.updateMask(mask_water);
+
+
+Map.addLayer(
+  profundidade_efetiva_cm,
+  {
+    min: 0, max: 100,
+    palette: ['#f6e8c3','#e5d8bd','#d5c5ad','#c4b29d','#c7eae5',
+    '#b8e0d2','#a6d9c7','#90c4b5','#76ada6','#5f948f']
+  },
+  'Profundidade efetiva (cm)'
+);
+
+Map.addLayer(
+  profundidade_solo_cm,
+  {
+    min: 0, max: 100,
+    palette: [
+'#fde0dd','#fcc5c0','#fa9fb5','#fbb4b9','#fef0d9',
+    '#ccebc5','#b3e2cd','#a6cee3','#7fa8d1','#5f90c2'
+    ]
+  },
+  'Profundidade do Solo (cm)'
+);
+
+
+// // Paleta em tons de cinza/marrom (escala contínua 0 → 1)
+// var paletteCascalho = [
+//   '#f7f4f0',  // quase branco
+//   '#e0d7ce',
+//   '#c8b8a6',
+//   '#b0997f',
+//   '#987a59',
+//   '#806344',
+//   '#674c30',
+//   '#4e3620'   // marrom escuro
+// ];
+
+// // // Visualização (0–1 corresponde a 0–100% volume)
+// Map.addLayer(
+//   cascalho_vol.select('cascalho_vol_010_020cm'),
+//   {min: 0, max: 100, palette: paletteCascalho},
+//   'Cascalho — Volume (%)',
+//   true
+// );
+
+
+/************************************************************
+ * 1. IMAGEM MULTIBANDA FINAL
+ * soildepth_stone50vol_cm  (D50)
+ * soildepth_stone90vol_cm  (D90) >90 cascalheira
+ ************************************************************/
+
+var profundidade_final = profundidade_efetiva_cm
+  .addBands(profundidade_solo_cm)
+  .rename(['soildepth_stone50vol_cm', 'soildepth_stone90vol_cm']);
+
+print('Imagem Final de Profundidades até cascalho dominante/extremo:', profundidade_final);
+
+
+Export.image.toAsset({
+  image: profundidade_final,
+  description: 'Taciara-GTSOLO_soildepth',
+  assetId: collPath + '/' + 'mapbiomas_soil_collection3_stoniness',
+  region: aoi, 
+  scale: 30,
+  maxPixels: 1e13
+});
+
