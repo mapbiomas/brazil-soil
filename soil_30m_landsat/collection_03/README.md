@@ -1,4 +1,4 @@
-# MapBiomas Soil Collection 3
+# MapBiomas Soil Collection 3 (beta)
 
 ## Description
 Collection 3 is currently in development. It builds upon the methods and data from Collection 2, incorporating new data sources and adding the last year to the annual series of maps for mapping soil properties across Brazil.
