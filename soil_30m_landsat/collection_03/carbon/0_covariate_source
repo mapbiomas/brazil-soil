@@ -1,0 +1,731 @@
+/******************************************************************************
+ * MapBiomas Solo — Covariáveis ambientais — módulo de acesso (estáticas e dinâmicas)
+ * ----------------------------------------------------------------------------
+ * Objetivo
+ *   - Disponibilizar covariáveis ambientais para análise e modelagem de atributos de solo.
+ *   - Estrutura modular que permite acesso uniforme a covariáveis estáticas e dinâmicas
+ *     por meio da função require(), garantindo consistência entre diferentes scripts.
+ * Saída
+ *   - Objeto de retorno contendo funções: static_covariates() e dynamic_covariates()
+ * Autoria
+ *   - MapBiomas Solo — contato@mapbiomas.org
+ *   - Versão: 2025-10-23 Taciara
+ ******************************************************************************/
+// --- --- --- --- --- COVARIÁVEIS AMBIENTAIS EXPLÍCITAS
+
+
+
+/////  atenção: mb edges esta com problema de acesso - corrigir.
+
+
+
+// --- COVARIÁVEIS ESTÁTICAS
+exports.static_covariates = function(){
+
+  // Particle Size Distribution (MapBiomas Soil C2)
+  // Final version of particle size distribuion (post depth integration)
+  
+var sandImg = ee.Image('projects/mapbiomas-workspace/SOLOS/PRODUTOS_C03/psd_final/areia_gbm_prev');
+
+// Seleção explícita das bandas
+var sandBands = sandImg.select([
+  'areia_000_010cm',
+  'areia_010_020cm',
+  'areia_020_030cm'
+]);
+
+// Média das três camadas
+var sand_000_030cm = sandBands
+  .reduce(ee.Reducer.mean())
+  .rename('areia_000_030cm')
+  .round();
+
+var siltImg = ee.Image('projects/mapbiomas-workspace/SOLOS/PRODUTOS_C03/psd_final/silte_gbm_prev');
+
+// Seleção explícita das bandas
+var siltBands = siltImg.select([
+  'silte_000_010cm',
+  'silte_010_020cm',
+  'silte_020_030cm'
+]);
+
+// Média das três camadas
+var silt_000_030cm = siltBands
+  .reduce(ee.Reducer.mean())
+  .rename('silte_000_030cm')
+  .round();
+
+var clayImg = ee.Image('projects/mapbiomas-workspace/SOLOS/PRODUTOS_C03/psd_final/argila_gbm_prev');
+
+// Seleção explícita das bandas
+var clayBands = clayImg.select([
+  'argila_000_010cm',
+  'argila_010_020cm',
+  'argila_020_030cm'
+]);
+
+// Média das três camadas
+var clay_000_030cm = clayBands
+  .reduce(ee.Reducer.mean())
+  .rename('argila_000_030cm')
+  .round();
+  
+
+var mb_texture = ee.Image().select([]); 
+mb_texture = mb_texture
+  .addBands(sand_000_030cm)
+  .addBands(silt_000_030cm)
+  .addBands(clay_000_030cm);
+  
+  
+    // Soil WRB (Hengl et al., 2017)
+    var soil_classes = [
+        'Ferralsols',
+        'Histosols',
+        'Nitisols',
+        'Vertisols',
+        'Plinthosols'
+    ];
+
+// --- CLASSES DE SOLO WRB (Hengl et al., 2017) ---
+// Cada banda representa a probabilidade de ocorrência da classe.
+// Os grupos abaixo agregam conjuntos de classes similares,
+// e a banda final será a soma das probabilidades das classes do grupo.
+
+
+    var sandysols_classes = [
+        'Arenosols',
+        'Podzols',
+      ];
+    
+    var humisols_classes = [
+        'Chernozems',
+        'Kastanozems',
+        'Phaeozems',
+        'Umbrisols',
+      ];
+    
+    var thinsols_classes = [
+        'Leptosols',
+        'Regosols',
+      ];
+    
+    var wetsols_classes = [
+        'Gleysols',
+        'Planosols',
+        'Stagnosols'
+      ];
+      
+    //Group based on top soil texture
+    var argisols_classes = [
+        'Alisols',
+        'Luvisols',
+        'Acrisols',
+        'Lixisols',
+        'Planosols'
+    ];
+
+    
+// WRB soil class
+    var soil = ee.Image().select()
+    .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/WRB_ALL_SOILS_SOILGRIDS_30M_GAPFILL').select(soil_classes))
+    .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/WRB_ALL_SOILS_SOILGRIDS_30M_GAPFILL').select(sandysols_classes).reduce('sum').rename('Sandysols'))
+    .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/WRB_ALL_SOILS_SOILGRIDS_30M_GAPFILL').select(humisols_classes).reduce('sum').rename('Humisols'))
+    .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/WRB_ALL_SOILS_SOILGRIDS_30M_GAPFILL').select(thinsols_classes).reduce('sum').rename('Thinsols'))
+    .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/WRB_ALL_SOILS_SOILGRIDS_30M_GAPFILL').select(argisols_classes).reduce('sum').rename('Argisols'))
+    .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/WRB_ALL_SOILS_SOILGRIDS_30M_GAPFILL').select(wetsols_classes).reduce('sum').rename('Wetsols'))
+    .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/FAO_2022_BLACKSOIL_1KM').rename('black_soil_prob'))        
+
+
+var sibcs_classes = [
+  'PLANOSSOLO', 'CHERNOSSOLO', 'LATOSSOLO', 'PLINTOSSOLO',
+  'GLEISSOLO', 'VERTISSOLO', 'LUVISSOLO', 'NITOSSOLO',
+  'ESPODOSSOLO', 'ARGISSOLO', 'ORGANOSSOLO', 'CAMBISSOLO',
+  'NEOSSOLO_FLUVICO', 'NEOSSOLO_QUARTZARENICO', 'NEOSSOLO_REGOLITICO',
+  'NEOSSOLO_LITOLICO'
+];
+
+// Subgrupos
+var sibcs_rasos = ['NEOSSOLO_REGOLITICO','NEOSSOLO_LITOLICO', 'CAMBISSOLO'];
+var sibcs_neossolo = ['NEOSSOLO_REGOLITICO','NEOSSOLO_LITOLICO'];
+var sibcs_btextural = ['PLANOSSOLO', 'PLINTOSSOLO', 'ARGISSOLO', 'LUVISSOLO'];
+var sibcs_esqueleto = ['PLINTOSSOLO', 'CAMBISSOLO', 'NEOSSOLO_FLUVICO'];
+var sibcs_homogeneo = ['NEOSSOLO_QUARTZARENICO', 'GLEISSOLO'];
+var sibcs_argiloso = ['LATOSSOLO', 'NITOSSOLO'];
+
+
+// Pedologia IBGE (18 classes - sem água)
+var soil_sibcs_raw = ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/IBGE_2023_PEDOLOGIA_250MIL_2025').select(sibcs_classes);
+//var maskOriginal = soil_sibcs_raw.mask().reduce(ee.Reducer.min());  // preencher nodata
+
+var soil_sibcs_filled = soil_sibcs_raw.unmask(0);
+// Banda principal: todas as classes originais
+var banda_sibcs = soil_sibcs_filled .select(sibcs_classes);
+
+// Subgrupos (redução → presença de qualquer classe → 1/0)
+var banda_rasos = soil_sibcs_filled.select(sibcs_rasos).reduce(ee.Reducer.sum()).gt(0).rename('sibcs_rasos');
+var banda_neossolo = soil_sibcs_filled.select(sibcs_neossolo).reduce(ee.Reducer.sum()).gt(0).rename('sibcs_neossolo');
+var banda_btextural = soil_sibcs_filled.select(sibcs_btextural).reduce(ee.Reducer.sum()).gt(0).rename('sibcs_btextural');
+var banda_esqueleto = soil_sibcs_filled.select(sibcs_esqueleto).reduce(ee.Reducer.sum()).gt(0).rename('sibcs_esqueleto');
+var banda_homogeneo = soil_sibcs_filled.select(sibcs_homogeneo).reduce(ee.Reducer.sum()).gt(0).rename('sibcs_homogeneo');
+var banda_argiloso = soil_sibcs_filled.select(sibcs_argiloso).reduce(ee.Reducer.sum()).gt(0).rename('sibcs_argiloso');
+
+
+var subprovinces = ee.Image(
+  'projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/IBGE_PROVINCIAIS_ESTRUTURAIS_250mil_2025_tmp/subprovincias_prob'
+);
+
+// subprovincias prob
+// 0 = ausencia; 1 = presença provavel; 2 = presença certa
+var sedimentos = ['Sedimentos_Subprovincia'];
+
+var sedimentares = ['Sedimentares_Subprovincia'];
+var sedimentares_prob = ['Sedimentares_Subprovincia', 'Sedimentares_Subprovincia_prob'];
+
+var vulcanicas = ['Vulcanicas_Subprovincia'];
+var vulcanicas_prob = ['Vulcanicas_Subprovincia', 'Vulcanicas_Subprovincia_prob'];
+
+var plutonicas = ['Plutonicas_Subprovincia'];
+var plutonicas_prob = ['Plutonicas_Subprovincia', 'Plutonicas_Subprovincia_prob'];
+
+var metamorficas = ['Metamorficas_Subprovincia'];
+var metamorficas_prob = ['Metamorficas_Subprovincia', 'Metamorficas_Subprovincia_prob'];
+
+var banda_sedimentos = subprovinces.select(sedimentos).reduce(ee.Reducer.sum()).gt(0).rename('sedimentos');
+
+var banda_sedimentares = subprovinces.select(sedimentares).rename('sedimentares');
+var banda_sedimentares_prob = subprovinces.select(sedimentares_prob).reduce(ee.Reducer.sum()).rename('sedimentares_prob');
+
+var banda_vulcanicas = subprovinces.select(vulcanicas).rename('vulcanicas');
+var banda_vulcanicas_prob = subprovinces.select(vulcanicas_prob).reduce(ee.Reducer.sum()).rename('vulcanicas_prob');
+
+var banda_plutonicas = subprovinces.select(plutonicas).rename('plutonicas');
+var banda_plutonicas_prob = subprovinces.select(plutonicas_prob).reduce(ee.Reducer.sum()).rename('plutonicas_prob');
+
+var banda_metamorficas = subprovinces.select(metamorficas).rename('metamorficas');
+var banda_metamorficas_prob = subprovinces.select(metamorficas_prob).reduce(ee.Reducer.sum()).rename('metamorficas_prob');
+
+///////
+
+// Gerar combinações de Classe de Solo e Bioma
+var biome = ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/IBGE_2019_BIOMAS_ZC_250MIL');
+
+var pantanal = biome.select('Pantanal');
+var caatinga = biome.select('Caatinga');
+var pampa = biome.select('Pampa');
+var mata_atlantica = biome.select('Mata_Atlantica');
+var amazonia = biome.select('Amazonia');
+var cerrado = biome.select('Cerrado');
+
+
+var plintossolo = soil_sibcs_filled.select('PLINTOSSOLO');
+var planossolo = soil_sibcs_filled.select('PLANOSSOLO');
+var gleissolo = soil_sibcs_filled.select('GLEISSOLO');
+var neossolo_quartzarenico = soil_sibcs_filled.select('NEOSSOLO_QUARTZARENICO');
+var argissolo = soil_sibcs_filled.select('ARGISSOLO');
+
+// PANTANAL 
+var banda_pantanal_plintossolo =
+    pantanal.multiply(plintossolo)
+            .rename('pantanal_plintossolo');
+
+// pantanal ∧ neossolo_quartzarenico
+var banda_pantanal_neossolo_quartzarenico =
+    pantanal.multiply(neossolo_quartzarenico)
+            .rename('pantanal_neossolo_quartzarenico');
+
+// pantanal ∧ gleissolo
+var banda_pantanal_gleissolo =
+    pantanal.multiply(gleissolo)
+            .rename('pantanal_gleissolo');
+
+// pantanal ∧ planossolo
+var banda_pantanal_planossolo =
+    pantanal.multiply(planossolo)
+            .rename('pantanal_planossolo');
+
+    
+// CAATINGA
+var latossolo = soil_sibcs_filled.select('LATOSSOLO');
+
+var banda_caatinga_latossolo =
+    caatinga.multiply(latossolo)
+            .rename('caatinga_latossolo');
+  
+    
+// Gerar combinações de Classe de Solo e Provincia
+// ==========================================
+// LATOSSOLO × Subprovíncias
+// ==========================================
+
+var banda_latossolo_vulcanicas =
+    latossolo.multiply(banda_vulcanicas)
+             .rename('latossolo_vulcanicas');
+
+var banda_latossolo_sedimentares =
+    latossolo.multiply(banda_sedimentares)
+             .rename('latossolo_sedimentares');
+
+var banda_latossolo_sedimentos =
+    latossolo.multiply(banda_sedimentos)
+             .rename('latossolo_sedimentos');
+
+var banda_latossolo_metamorficas =
+    latossolo.multiply(banda_metamorficas)
+             .rename('latossolo_metamorficas');
+
+var banda_latossolo_plutonicas =
+    latossolo.multiply(banda_plutonicas)
+             .rename('latossolo_plutonicas');
+
+
+// ==========================================
+// ARGISSOLOS × Subprovíncias
+// ==========================================
+
+var banda_argissolo_metamorficas =
+    argissolo.multiply(banda_metamorficas)
+             .rename('argissolo_metamorficas');
+
+var banda_argissolo_sedimentares =
+    argissolo.multiply(banda_sedimentares)
+             .rename('argissolo_sedimentares');
+
+var banda_argissolo_sedimentos =
+    argissolo.multiply(banda_sedimentos)
+             .rename('argissolo_sedimentos');
+
+
+// ==========================================
+// RASOS × Subprovíncias
+// ==========================================
+
+var banda_raso_vulcanica =
+    banda_rasos.multiply(banda_vulcanicas)
+               .rename('raso_vulcanica');
+
+var banda_raso_sedimentar =
+    banda_rasos.multiply(banda_sedimentares)
+               .rename('raso_sedimentares');
+
+var banda_raso_metamorfica =
+    banda_rasos.multiply(banda_metamorficas)
+               .rename('raso_metamorfica');
+
+var banda_raso_plutonica =
+    banda_rasos.multiply(banda_plutonicas)
+               .rename('raso_plutonica');
+
+
+// ==========================================
+// SEDIMENTOS × BIOMAS
+// ==========================================
+
+var banda_pantanal_sedimentos =
+    pantanal.multiply(banda_sedimentos)
+            .rename('pantanal_sedimentos');
+
+var banda_amazonia_sedimentos =
+    amazonia.multiply(banda_sedimentos)
+            .rename('amazonia_sedimentos');
+
+var banda_cerrado_sedimentos =
+    cerrado.multiply(banda_sedimentos)
+           .rename('cerrado_sedimentos');
+
+var banda_pampa_sedimentos =
+    pampa.multiply(banda_sedimentos)
+         .rename('pampa_sedimentos');
+
+var banda_caatinga_sedimentos =
+    caatinga.multiply(banda_sedimentos)
+            .rename('caatinga_sedimentos');
+
+var banda_mata_atlantica_sedimentos =
+    mata_atlantica.multiply(banda_sedimentos)
+                  .rename('mata_atlantica_sedimentos');
+
+//Land Surface Variables (Amatulli et al., 2020, 2018)
+
+    var slope = ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/OT_GEOMORPHOMETRY_90m').select('slope');
+    var slopecalc = slope.expression(
+        'tan(3.141593/180 * degrees)*100', {
+          'tan': slope.tan(),
+          'degrees': slope
+        }).round().rename('slope');
+ 
+    var curvatures = ee.Image().select() //15x15 window
+    .addBands(ee.Image('projects/ee-barbaracosta/assets/soc_mapping/brasil_curvaturas_15x15').select('b1').rename('cross_sectional').round())
+    .addBands(ee.Image('projects/ee-barbaracosta/assets/soc_mapping/brasil_curvaturas_15x15').select('b2').rename('longitudinal_curvature').round());
+    
+    var geomorphometry_covariates = ee.Image().select()  //3x3 window
+      .addBands(ee.Image("MERIT/DEM/v1_0_3").select(['dem'],['elevation']).int16())
+      .addBands(slopecalc)
+      .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/OT_GEOMORPHOMETRY_90m').select('convergence').round())
+      .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/OT_GEOMORPHOMETRY_90m').select('cti').multiply(10).round())
+      .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/OT_GEOMORPHOMETRY_90m').select('eastness').multiply(100).round())
+      .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/OT_GEOMORPHOMETRY_90m').select('northness').multiply(100).round())
+      .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/OT_GEOMORPHOMETRY_90m').select('roughness').round())
+      .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/OT_GEOMORPHOMETRY_90m').select('spi').add(1).log10().multiply(100).round())
+      
+      .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/OT_GEOMORPHOMETRY_90m').select('elev_stdev').round())
+      .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/OT_GEOMORPHOMETRY_90m').select('dev_magnitude').round())
+      .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/OT_GEOMORPHOMETRY_90m').select('dev_scale').round())
+      
+
+var climate_koppen = ee.Image().select()
+        .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/IPEF_2013_KOPPEN_100M_2025/koppen_l1'))
+        .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/IPEF_2013_KOPPEN_100M_2025/koppen_l2'))
+        .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/IPEF_2013_KOPPEN_100M_2025/koppen_l3'));
+
+// treinar e avaliar um modelo de carbono com koppen e outro com holdridge
+
+// var climate_holdridge = ee.Image().select()
+//         .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/MB_2025_CLIMATE_HOLDRIDGE/HLZ_L1')) // excluir banda constante
+//         .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/MB_2025_CLIMATE_HOLDRIDGE/HLZ_L2'));
+
+var provinces = ee.Image().select()
+        .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/IBGE_PROVINCIAIS_ESTRUTURAIS_250mil_2025/IBGE_PROVINCIAS_250MIL_DUMMY'))
+        .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/IBGE_PROVINCIAIS_ESTRUTURAIS_250mil_2025/subprovincias'));
+  
+var distance = ee.Image().select()
+        .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/DISTANCE_C10_v3/distance_afloramento_rochoso_c10_v3_fd7000_md7000').rename('Distance_to_rock_v33'))     
+        .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/DISTANCE_C10_v3/distance_praia_duna_areal_c10_v3_fd7000_md7000').rename('Distance_to_sand_v33'));
+        
+// MapBiomas Water (Collection 10) - static
+var water =  ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/MB_2024_C10_WATER/MB_2024_C10_STATIC_WATER_RECURRENCE_1985_2024').rename('Water_40y_recurrence');
+
+// MabBiomas LULC (Collection 10) - static
+var stable_areas = ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/MB_2024_STABLEAREAS_C10').select('Area_Estavel');
+
+///////////////////////////////////
+    //------ Static covariate union
+    var static_covariates = ee.Image().select()
+        //Soil Classes WRB probabilities & Black Soil
+        .addBands(mb_texture)
+        .addBands(soil)
+        .addBands(banda_sibcs)
+        .addBands(banda_rasos)
+        .addBands(banda_neossolo)
+        .addBands(banda_btextural)
+        .addBands(banda_esqueleto)
+        .addBands(banda_homogeneo)
+        .addBands(banda_argiloso)
+ 
+        //Structural provinces (IBGE, 2019c) // ordinais; 0 = ausencia; 1 = presença provavel; 2 = presença
+        .addBands(provinces)
+        .addBands(banda_sedimentos)
+        .addBands(banda_sedimentares_prob)
+        .addBands(banda_vulcanicas_prob)
+        .addBands(banda_plutonicas_prob)
+        .addBands(banda_metamorficas_prob)
+        
+        .addBands(banda_sedimentares)
+        .addBands(banda_vulcanicas)
+        .addBands(banda_plutonicas)
+        .addBands(banda_metamorficas)        
+        
+        
+        // Ocorrência conjunta de bioma e classe de solo // ordinais; 0 = ausencia; 1 = presença provavel; 2 = presença
+        .addBands(banda_pantanal_plintossolo)
+        .addBands(banda_pantanal_neossolo_quartzarenico)
+        .addBands(banda_pantanal_gleissolo)
+        .addBands(banda_pantanal_planossolo)
+        .addBands(banda_caatinga_latossolo)
+        
+        // Ocorrência conjunta de subprovincia e classe de solo    // ordinais; 0 = ausencia; 1 = presença provavel; 2 = presença     
+        .addBands(banda_latossolo_vulcanicas)
+        .addBands(banda_latossolo_sedimentares)
+        .addBands(banda_latossolo_sedimentos)
+        .addBands(banda_latossolo_metamorficas)
+        .addBands(banda_latossolo_plutonicas)
+        
+        // Ocorrência conjunta de subprovincia e classe de solo      // ordinais; 0 = ausencia; 1 = presença provavel; 2 = presença    
+        .addBands(banda_argissolo_metamorficas)
+        .addBands(banda_argissolo_sedimentares)
+        .addBands(banda_argissolo_sedimentos)
+        .addBands(banda_raso_vulcanica)
+        .addBands(banda_raso_sedimentar)
+        .addBands(banda_raso_plutonica)
+
+        // Ocorrência conjunta de sedimentos e bioma         // ordinais; 0 = ausencia; 1 = presença provavel; 2 = presença
+        .addBands(banda_pantanal_sedimentos)
+        .addBands(banda_amazonia_sedimentos)
+        .addBands(banda_cerrado_sedimentos)
+        .addBands(banda_pampa_sedimentos)
+        .addBands(banda_caatinga_sedimentos)
+        .addBands(banda_mata_atlantica_sedimentos)
+
+        
+        //Land Surface Variables
+        .addBands(geomorphometry_covariates)
+        .addBands(curvatures)
+      
+        //Köppen climate classification
+        .addBands(climate_koppen)
+       // .addBands(climate_holdridge)
+        
+        //Biome 
+        .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/IBGE_2019_BIOMAS_ZC_250MIL'))
+        
+        //Phytoecological regions (IBGE, 2023, 2012)
+        .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/IBGE_2023_FITOFISIONOMIA_250MIL_2025'))
+
+        //Distance to class
+        .addBands(distance)
+        
+        // MapBiomas Water (Collection 3) - static
+        .addBands(water)
+        .addBands(stable_areas);
+
+        
+    return static_covariates;
+  };
+
+///////////////////////////////////////////////////////
+//////// Dinamicas 
+
+  // --- COVARIÁVEIS DINÂMICAS
+  // auxiliar para filtrar por satelite o mosaico do MapBiomas
+  var year_sat = {
+    1985:	'l5',
+    1986:	'l5',
+    1987:	'l5',
+    1988:	'l5',
+    1989:	'l5',
+    1990:	'l5',
+    1991:	'l5',
+    1992:	'l5',
+    1993:	'l5',
+    1994:	'l5',
+    1995:	'l5',
+    1996:	'l5',
+    1997:	'l5',
+    1998:	'l5',
+    1999:	'l5',
+    2000:	'l5',
+    
+    2001:	'l7',
+    2002:	'l7',
+    
+    2003:	'l5',
+    2004:	'l5',
+    2005:	'l5',
+    2006:	'l5',
+    2007:	'l5',
+    2008:	'l5',
+    2009:	'l5',
+    2010:	'l5',
+    
+    2011:	'l7',
+    2012:	'l7',
+    
+    2013:	'l8',
+    2014:	'l8',
+    2015:	'l8',
+    2016:	'l8',
+    2017:	'l8',
+    2018:	'l8',
+    2019:	'l8',
+    2020:	'l8',
+    2021:	'l8',
+    2022:	'l8',
+    2023:	'l8',
+    2024: 'l8',
+  };
+  
+
+  
+  exports.dynamic_covariates = function (){
+
+ 
+ // Adicionar dinamica
+ // projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/GT_DEC_PRECIPITATION_2025 
+ 
+    //------ Classificação de cobertura e uso da terra
+    // Idades das Classes Coleção 10 (1985-2024)
+    var ageLulc = ee.ImageCollection('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/MB_2024_AGELULC_C10_v2'); 
+    var ageLulc_list = ageLulc.aggregate_array('index').distinct();
+
+    // Mapbiomas Water Col 3. (Baseada na LULC Col. 10) - Dynamic
+    // Dynamic water recurrency is used to soc stock prediction while static is used for pds prediction
+    var mb_waterRecurrence_dinamic = ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/MB_2024_C10_WATER/MB_2024_DYNAMIC_WATER_RECURRENCE');
+
+    //Mapbiomas Fogo Col 4.
+    var mb_fire_recurrence_dynamic = ee.Image('projects/mapbiomas-workspace/FOGO_COL4/2_Subprodutos_col41/mapbiomas-fire-collection41-accumulated-burned-v1');
+    var mb_fireTimeAfterFire = ee.Image('projects/mapbiomas-public/assets/brazil/fire/collection4_1/mapbiomas_fire_collection41_time_after_fire_v1');
+
+    // Mapbiomas Degradação - Área de Borda - Soma das faixas
+    //var mb_summedEdges = ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/MB_DEGRADATION_BETA_SUMMED_EDGES');
+    var mb_edge_ic = ee.ImageCollection('projects/mapbiomas-brazil/assets/DEGRADATION/COLLECTION-10/edge-area');
+    var mb_edges = mb_edge_ic
+      .map(function(img){
+     var y = ee.Number.parse(img.get('year'));
+     return img
+      .rename('mb_edges')
+      .set('year', y);
+  });
+
+
+    // ATUALIZAR
+    // Indices espectrais do mosaico do mapbiomas com decaimento exponencial
+    var indices_decay = ee.ImageCollection('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/LANDSAT_MB_INDICES_DECAY');
+    
+    // indices espectrais do mosaico do mapbiomas
+    // utilizado para preencher dados vazios na serie temporal (gapfill)
+   var mb_col = ee.ImageCollection('projects/nexgenmap/MapBiomas2/LANDSAT/BRAZIL/mosaics-2');       
+    
+   //------ União das covariáveis dinâmicas
+    var years = [
+      1948,1949,1950,1951,1952, 
+      1953,1954,1955,1956,1957,
+      1958,1959,1960,1961,1962,
+      1963,1964,1965,1966,1967,
+      1968,1969,1970,1971,1972,
+      1973,1974,1975,1976,1977,
+      1978,1979,1980,1981,1982,
+      1983,1984,1985,1986,1987,
+      1988,1989,1990,1991,1992,
+      1993,1994,1995,1996,1997,
+      1998,1999,2000,2001,2002,
+      2003,2004,2005,2006,2007,
+      2008,2009,2010,2011,2012,
+      2013,2014,2015,2016,2017,
+      2018,2019,2020,2021,2022,
+      2023,2024
+    ];
+
+    
+    var dynamic_covariates = years.map(function(year){
+    
+      var year_alternative = year;
+      if (year_alternative < 1985) {
+        year_alternative = 1985;
+      } else if (year_alternative === 2024) {
+        year_alternative = 2023;
+      }
+  
+      //------ LULC Age
+      var ageLulc_year = ageLulc_list.iterate(function(current,previous){
+        var index = ee.String(current);
+        var image = ageLulc.filter(ee.Filter.eq('index',index)).mosaic();
+        var image_year = image.select([index.cat('_'+year_alternative)],[index]);
+
+        return ee.Image(previous)
+          .addBands(image_year);
+      },ee.Image().select([]));
+      ageLulc_year = ee.Image(ageLulc_year);
+    
+ 
+    // //  INDICES MOSAICO MAPBIOMAS COM DECAIMENTO  
+        var mb_ndvi_median = indices_decay.filter(ee.Filter.eq('year',year_alternative)).select('mb_ndvi_median_decay').first();
+        var mb_evi2_median = indices_decay.filter(ee.Filter.eq('year',year_alternative)).select('mb_evi2_median_decay').first();
+        var mb_savi_median = indices_decay.filter(ee.Filter.eq('year',year_alternative)).select('mb_savi_median_decay').first();
+
+         var dynamic_covariates_year = ee.Image().select([])
+            .addBands(ageLulc_year)
+            .addBands(mb_ndvi_median)
+            .addBands(mb_evi2_median)
+            .addBands(mb_savi_median);
+     // 
+     
+     // --- Seleção da banda EDGE pelo ano (termina com o ano) ---
+// Seleciona a imagem EDGE do ano
+var edgeBand = mb_edges
+  .filter(ee.Filter.eq('year', year_alternative))
+  .first()
+  .rename('mb_edges');    // assume 1 banda por imagem
+
+dynamic_covariates_year = dynamic_covariates_year
+  .addBands(edgeBand)
+  .addBands(
+    mb_waterRecurrence_dinamic
+      .select('water_recurrence_1985_' + year_alternative)
+      .rename('mb_water_recurrence_dynamic'))
+  .addBands(
+    mb_fire_recurrence_dynamic
+      .select('fire_accumulated_1985_' + year_alternative)
+      .rename('mb_fireRecurrence'))
+  .addBands(
+    mb_fireTimeAfterFire
+      .select('classification_' + (year_alternative === 1985 ? 1986 : year_alternative))
+      .rename('mb_fire_time_after_fire'));
+              
+        // dynamic_covariates_year = dynamic_covariates_year;
+        var mb_indices_year = [
+          'ndvi_median',
+          'evi2_median',
+          'savi_median',
+        ];
+        
+        // // print('mb_indices_year',mb_indices_year);
+        mb_indices_year.forEach(function(band){
+          var index_band = mb_col
+            .filter(ee.Filter.eq('year',year_alternative)).select([band],['mb_'+band])
+            .filter(ee.Filter.eq('satellite',year_sat[year_alternative]))
+            .median()
+            .int16();
+  
+        dynamic_covariates_year = dynamic_covariates_year.addBands(index_band);
+         });  
+      
+          // Aplicando Gapfill após todas as bandas dos Indices MapBiomas
+          var bandNames = dynamic_covariates_year.bandNames();
+          var applyGapFill = function(image) { 
+          
+          // aplicar o gapfill do t0 (ano zero) até tn
+          var imageFilledt0tn = bandNames.iterate(function(bandName, previousImage) {
+            var currentImage = image.select(ee.String(bandName));
+            previousImage = ee.Image(previousImage);
+            currentImage = currentImage.unmask(previousImage.select([0]));
+            return currentImage.addBands(previousImage);
+          }, ee.Image(image.select([bandNames.get(0)])));
+          
+          imageFilledt0tn = ee.Image(imageFilledt0tn);
+          
+          // Inverter a ordem das bandas para preencher de tn até t0
+          var bandNamesReversed = bandNames.reverse();
+          
+          // aplicar o gapfill do tn até t0 (ano zero)
+          var imageFilledtnt0 = bandNamesReversed.slice(1).iterate(function(bandName, previousImage) {
+            var currentImage = imageFilledt0tn.select(ee.String(bandName));
+            previousImage = ee.Image(previousImage);
+            currentImage = currentImage.unmask(previousImage.select(previousImage.bandNames().length().subtract(1)));
+            return previousImage.addBands(currentImage);
+          }, ee.Image(imageFilledt0tn.select([bandNamesReversed.get(0)])));
+          
+          imageFilledtnt0 = ee.Image(imageFilledtnt0).select(bandNames);
+          return imageFilledtnt0;
+        };
+        
+        dynamic_covariates_year = applyGapFill(dynamic_covariates_year);
+        
+      return dynamic_covariates_year.set({year: year});
+    });
+    
+    // print('dynamic_covariates', dynamic_covariates);
+    return ee.ImageCollection(dynamic_covariates);
+  }
+  
+  
+  
+// var mb_edge_ic = ee.ImageCollection('projects/mapbiomas-brazil/assets/DEGRADATION/COLLECTION-10/edge-area');
+// // Reduzir para uma imagem (ex.: mosaico do primeiro elemento)
+// var edge_img = mb_edge_ic.first();
+
+// // Parâmetros de visualização
+// var vis = {
+//   min: 0,
+//   max: 1,
+//   palette: ['ffffff', '000000']  // ajuste conforme necessidade
+// };
+
+// // Adicionar ao mapa
+// Map.addLayer(edge_img, vis, 'MB Edge');
+// Map.centerObject(edge_img, 5);
+
+        
+        
+  // O acesso às covariáveis é feito por meio de uma requisão (função: "require"). Para uso desses dados, acesse ao repositório de scripts. 
+  // require('users/taciaraz/mapbiomas_solo:collection3/0_covariates/0_psd_covariate_source').static_covariates();
+  
