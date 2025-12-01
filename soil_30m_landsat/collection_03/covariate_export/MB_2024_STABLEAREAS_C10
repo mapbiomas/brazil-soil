@@ -1,0 +1,87 @@
+/******************************************************************************
+ * MapBiomas Solo — Áreas estáveis — detecção temporal na Coleção 10
+ * ----------------------------------------------------------------------------
+ * Objetivo
+ *   - Identificar áreas estáveis (sem mudança de classe) ao longo de toda a
+ *     série anual da Coleção 10 do MapBiomas Brasil, comparando cada ano com o
+ *     último ano disponível e produzindo um mapa binário de estabilidade.
+ * Entradas (assets)
+ *   - projects/mapbiomas-public/assets/brazil/lulc/collection10/
+ *       mapbiomas_brazil_collection10_integration_v2
+ *     (série anual de uso e cobertura do MapBiomas Brasil Coleção 10)
+ *   - geometry
+ *     (geometria de recorte para exportação)
+ * Saída (asset)
+ *   - projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/MB_2024_STABLEAREAS_C10
+ * Bandas exportadas (ordem fixa ou derivada)
+ *   - Area_Estavel; tipo: byte; domínio: {0,1}
+ *       1 = pixel manteve o mesmo valor de classe em todos os anos  
+ *       0 = houve ao menos uma mudança na série  
+ * Regras de inclusão
+ *   - A banda de referência é o último ano da série (última banda da imagem).
+ *   - Para cada ano anterior, calcula-se a diferença:
+ *       diff = classificação_ano - classificação_ultimo_ano.
+ *     Caso diff = 0, o pixel manteve a mesma classe naquele ano.
+ *   - A área estável é definida como a soma das diferenças igual a zero
+ *     em todos os anos da série.
+ *   - O resultado é uma única banda binária "Area_Estavel".
+ *   - Exportação com resolução de 30 m, piramidização “mode” e recorte pelo
+ *     limite definido em geometry.
+ * Autoria
+ *   - MapBiomas Solo — contato@mapbiomas.org
+ *   - Versão: 2025-12-01 Taciara
+ ******************************************************************************/
+
+//building stable areas
+var lulc = ee.Image('projects/mapbiomas-public/assets/brazil/lulc/collection10/mapbiomas_brazil_collection10_integration_v2');
+
+Map.addLayer(lulc,{},'lulc');
+
+var mask = lulc.select(0).gte(1);  
+
+lulc.bandNames().evaluate(function(bandnames){
+  var slice_bands = bandnames.slice(0,-1);
+  var last_band = bandnames[bandnames.length - 1];
+  var last_image = lulc.select(last_band);
+  
+  var test_stable_areas = slice_bands
+    .map(function(band){
+      var year_image = lulc.select(band);
+      return year_image.subtract(last_image).rename('classification');
+    });
+    
+  var stable_areas_eq = ee.ImageCollection(test_stable_areas)
+    .sum()
+    .eq(0)
+    .rename('Area_Estavel');
+    // .selfMask();
+  
+  Map.addLayer(stable_areas_eq,{},'stable_areas_eq');
+
+  var description = 'MB_2024_STABLEAREAS_C10';
+  
+  // var stable_areas = stable_areas_eq.set({
+  //   'index':description,
+  //   'date_create':ee.Date(Date.now()).format('y-M-d'),
+  //   'theme':'GT-Solos',
+  //   'decription':'https://code.earthengine.google.com/?scriptPath=users%2Fwallacesilva%2Fmapbiomas-solos%3ACOLAECAO_01%2Fexport-datasets%2Fdummies-stable-areas'
+  // }).updateMask(mask.gte(1))
+
+
+  // print(stable_areas);
+  // Map.addLayer(stable_areas,{},'stable_areas');
+  
+  Export.image.toAsset({
+    image:stable_areas_eq,
+    description:description,
+    assetId:'projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/'+description,
+    pyramidingPolicy:'mode',
+    // dimensions:,
+    region:geometry,
+    scale:30, 
+    // crs:,
+    // crsTransform:,
+    maxPixels:1e13,
+    // shardSize:
+  });
+});
