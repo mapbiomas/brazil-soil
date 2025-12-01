@@ -1,0 +1,214 @@
+/******************************************************************************
+ * MapBiomas Solo — Fitofisionomias IBGE 250k (2023) — Redistribuição da classe de contato e exportação 0/1
+ * ----------------------------------------------------------------------------
+ * Objetivo
+ *   - Gerar bandas binárias (0/1) por fitofisionomia IBGE 1:250.000 (ano 2023),
+ *     redistribuindo feições de “Contato (Ecótono e Encrave)” com base no campo
+ *     nm_contat e exportando imagem categórica em 30 m para o acervo MapBiomas Solo.
+ * Entradas (assets)
+ *   - projects/mapbiomas-solos-workspace/assets/covariates/vegetation/IBGE_fitofissionomia_250mil_2023 (base de fitofisionomias)
+ *   - projects/mapbiomas-workspace/AUXILIAR/biomas_IBGE_250mil (limite regional e máscara espacial)
+ * Saída (asset)
+ *   - projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/IBGE_2023_FITOFISIONOMIA_250MIL_2025
+ * Bandas exportadas (ordem fixa ou derivada)
+ *   - Floresta_Ombrofila_Aberta, Floresta_Estacional_Decidual, Floresta_Ombrofila_Densa,
+ *     Floresta_Estacional_Semidecidual, Floresta_Estacional_Sempre_Verde, Campinarana, Floresta_Ombrofila_Mista,
+ *     Formacao_Pioneira, Savana, Savana_Estepica, Estepe;
+ *     tipo: uint8; domínio: {0,1}
+ * Regras de inclusão
+ *   - Excluir previamente a classe "Corpo d'água continental".
+ *   - Para cada banda, incluir: (A) feições com legenda_1 igual ao nome completo da classe
+ *     e (B) feições de "Contato (Ecótono e Encrave)" cujo nm_contat contenha o termo-alvo
+ *   - Rasterizar feições com valor 1; pixels ausentes recebem 0.
+ *
+ * Autoria
+ *   - MapBiomas Solo — contato@mapbiomas.org
+ *   - Versão: 2025-10-18 Taciara
+ ******************************************************************************/
+
+// ========================= 0) LEGENDA (nome → banda) ==============================
+
+var legend = ee.Dictionary({
+  "Campinarana": "Campinarana",
+  "Contato (Ecótono e Encrave)": "Contato_Ecotono_e_Encrave",
+  "Corpo d'água continental": "Corpo_dagua_continental",
+  "Estepe": "Estepe",
+  "Floresta Estacional Decidual": "Floresta_Estacional_Decidual",
+  "Floresta Estacional Semidecidual": "Floresta_Estacional_Semidecidual",
+  "Floresta Estacional Sempre-Verde": "Floresta_Estacional_Sempre_Verde",
+  "Floresta Ombrófila Aberta": "Floresta_Ombrofila_Aberta",
+  "Floresta Ombrófila Densa": "Floresta_Ombrofila_Densa",
+  "Floresta Ombrófila Mista": "Floresta_Ombrofila_Mista",
+  "Formação Pioneira": "Formacao_Pioneira",
+  "Savana": "Savana",
+  "Savana-Estépica": "Savana_Estepica"
+});
+
+// ========================= 1) ENTRADAS & REGIÃO =================================== 
+// Shapefile IBGE 250k (atenção à grafia do asset) 
+var fcFito = ee.FeatureCollection( 'projects/mapbiomas-solos-workspace/assets/covariates/vegetation/IBGE_fitofissionomia_250mil_2023' ); 
+
+// --- Obter lista de fitofisionomias únicas (campo principal) ---
+var listaClasses = fcFito.aggregate_array('legenda_1').distinct().sort();
+print('Lista de fitofisionomias (legenda_1):', listaClasses);
+
+
+// Biomas para região e máscara 
+
+var biomas = ee.FeatureCollection('projects/mapbiomas-workspace/AUXILIAR/biomas_IBGE_250mil'); 
+var region = biomas.geometry().bounds(); 
+var brasilContorno = biomas.union().geometry(); 
+var region = brasilContorno.bounds(); 
+var maskInside = ee.Image().paint(biomas, 1).selfMask(); // extrapolar 3 km para fora 
+var regionBuffered = biomas.geometry().buffer(3000);
+
+// ========================= 2) LISTA DE BANDAS DE SAÍDA ============================
+var outBands = legend.values()
+  .remove('Contato_Ecotono_e_Encrave')   // não exportar banda “contato”
+  .remove('Corpo_dagua_continental');    // remover corpo d’água
+print('Bandas de saída:', outBands);
+
+// ========================= 3) HELPER: termo de busca em `nm_contat` ===============
+function termoBusca(abrev){
+  abrev = ee.String(abrev);
+  var isOmb = abrev.index('Ombrofila').gte(0);
+  var isEst = abrev.index('Estacional').gte(0);
+  var isPio = abrev.index('Pioneira').gte(0);
+
+  return ee.String(ee.Algorithms.If(
+    isOmb, 'Floresta Ombrófila',
+    ee.Algorithms.If(
+      isEst, 'Floresta Estacional',
+      ee.Algorithms.If(
+        isPio, 'Formações Pioneiras',     // nm_contat costuma usar plural
+        legend.keys().get(legend.values().indexOf(abrev)) // demais casos
+      )
+    )
+  ));
+}
+
+// ========================= 4) GERAR AS BANDAS ====================================
+
+// Exclui “Corpo d’água” da base
+var fcBase = fcFito.filter(ee.Filter.neq('legenda_1', "Corpo d'água continental"));
+
+// Acumula as bandas 0/1
+var image = ee.Image(outBands.iterate(function(current, previous){
+  var abrev        = ee.String(current); // 'Savana'
+  var nomeCompleto = ee.String(legend.keys().get(legend.values().indexOf(abrev)));
+  var termo        = termoBusca(abrev);
+
+  // (A) classe original (sem contato)
+  var featsClasse = fcBase.filter(ee.Filter.and(
+    ee.Filter.neq('legenda_1', 'Contato (Ecótono e Encrave)'),
+    ee.Filter.eq('legenda_1', nomeCompleto)
+  ));
+
+  // (B) contato cujo nm_contat contém o termo
+  var featsContato = fcBase.filter(ee.Filter.and(
+    ee.Filter.eq('legenda_1', 'Contato (Ecótono e Encrave)'),
+    ee.Filter.notNull(['nm_contat']),
+    ee.Filter.stringContains('nm_contat', termo)
+  ));
+
+  // União (A + B) → raster 0/1
+  var band = ee.Image()
+    .paint(featsClasse.merge(featsContato), 1)
+    .unmask(0)
+    .rename(abrev)
+    .byte()
+    .updateMask(maskInside); // mantém só dentro dos biomas
+
+  return ee.Image(previous).addBands(band);
+}, ee.Image([])));
+
+// ========================= 5) INTERPOLAÇÃO (opcional) =============================
+// Se quiser "engrossar" manchas e preencher microfuros, ligue a flag abaixo.
+var DO_INTERPOLATE = false;
+if (DO_INTERPOLATE) {
+  var params = {radius: 1000, units: 'meters'};
+  var interpolation = image.focalMax(params).focalMax(params).focalMax(params).unmask(0);
+  image = interpolation.blend(image); // preserva pixels originais quando existentes
+}
+
+// Garante tipo inteiro 0/1 em todas as bandas
+image = image.byte();
+
+// ========================= 6) VALIDAÇÕES =================================
+// // Amostra nm_contat
+// print('Sample nm_contat:', fcFito
+//   .filter(ee.Filter.eq('legenda_1', 'Contato (Ecótono e Encrave)'))
+//   .select('nm_contat')
+//   .limit(10)
+// );
+
+// // Visual de checagem
+// var CLASSE_TESTE = 'Savana';
+// Map.addLayer(ee.Image().paint(fcFito.filter(ee.Filter.eq('legenda_1', CLASSE_TESTE)), 1),
+//   {palette:['00BFFF'], opacity:0.7}, '0. ORIGINAL: '+CLASSE_TESTE);
+// Map.addLayer(image.select(CLASSE_TESTE),
+//   {min:0, max:1, palette:['000000','FFFFFF']}, '1. FINAL (Agregada): '+CLASSE_TESTE);
+
+// var imgContatoCru = ee.Image().paint(
+//   fcFito.filter(ee.Filter.eq('legenda_1', 'Contato (Ecótono e Encrave)')), 1
+// );
+// Map.addLayer(imgContatoCru, {palette:['800080'], opacity:0.8},
+//   'INSPEÇÃO: Contato (nm_contat)', false);
+
+// // Listas úteis no console
+// print('Lista de bandas geradas:', image.bandNames());
+// print('Bandas (texto único):', image.bandNames().join(', '));
+
+// ========================= 7) EXPORT =============================================
+var description = 'IBGE_2023_FITOFISIONOMIA_250MIL_2025';
+var assetId     = 'projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/' + description;
+
+// Metadados básicos
+image = image.set({
+  description: 'IBGE 2023 Fitofisionomias 250k — contato redistribuído por nm_contat',
+  fonte: 'IBGE 1:250.000 (2023); Biomas IBGE',
+  mascara: 'biomas_IBGE_250mil',
+  metodo: 'classe + contato(stringContains nm_contat) → bandas 0/1',
+  data_processamento: ee.Date(Date.now()).format('YYYY-MM-dd')
+});
+
+// Exporta como categórico
+Export.image.toAsset({
+  image: image,
+  description: description,
+  assetId: assetId,
+  pyramidingPolicy: {'.default':'mode'},
+  region: region,           
+  scale: 30,
+  maxPixels: 1e12
+});
+
+
+
+////// CORRECAO E EXPOTACAO DE BANDAS COM INCONSISTENCIAS
+// ========================= EXPORTAR BANDAS INDIVIDUAIS PARA A IMAGECOLLECTION =========================
+
+// // Caminho da ImageCollection já existente
+// var collectionPath = 'projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/IBGE_2023_FITOFISIONOMIA_250MIL_2025';
+
+// // 1. Floresta Estacional Sempre-Verde
+// Export.image.toAsset({
+//   image: image.select('Floresta_Estacional_Sempre_Verde').byte(),
+//   description: 'IBGE_2023_Fito_Floresta_Estacional_Sempre_Verde',
+//   assetId: collectionPath + '/Floresta_Estacional_Sempre_Verde',
+//   pyramidingPolicy: {'.default':'mode'},
+//   region: region,         // mesma region que você já usa no export geral
+//   scale: 30,
+//   maxPixels: 1e12
+// });
+
+// // 2. Savana
+// Export.image.toAsset({
+//   image: image.select('Savana').byte(),
+//   description: 'IBGE_2023_Savana',
+//   assetId: collectionPath + '/Savana',
+//   pyramidingPolicy: {'.default':'mode'},
+//   region: region,
+//   scale: 30,
+//   maxPixels: 1e12
+// });
