@@ -8,7 +8,7 @@ This directory contains the following subdirectories:
 
 * [carbon](./carbon/): Contains scripts for modeling soil organic carbon stocks in space and time.
 * [texture](./texture/): Contains scripts for modeling soil particle size distribution (clay, silt, and sand) and texture in space and depth to stoniness trasholds (50 and 90% vol).
-* [covariates](./covariates/): Contains scripts for generating covariates used in the soil modeling process (exported).
+* [covariate_export](./covariate_export/): Contains scripts for generating covariates used in the soil modeling process (exported).
 
 ## Usage
 The code in this repository is designed to be run on the Google Earth Engine (GEE) Code Editor. Follow these steps to use the code:
