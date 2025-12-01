@@ -1,0 +1,256 @@
+/******************************************************************************
+ * MapBiomas Solo — Textura do solo — Classificação em grupamentos e classes
+ * ----------------------------------------------------------------------------
+ * Objetivo
+ *   - Classificar frações granulométricas (areia, silte e argila) em:
+ *     grupamentos texturais (Legenda 1), sub-grupamentos texturais (Legenda 2)
+ *     e classes texturais detalhadas (Legenda 3).
+ * Regras de inclusão
+ *   - Classificação baseada em intervalos de areia, silte e argila (0–100%), em %:
+ *     - Muito argilosa e argilosa: argila ≥ 35% (classes específicas para argila ≥ 60%).
+ *     - Classes com dominância de silte: silte elevado (≈ ≥ 50%) e areia baixa, com
+ *       argila moderada a baixa (ex.: siltosa, franca siltosa, silte).
+ *     - Classes com dominância de areia: areia muito elevada e silte baixo, com argila
+ *       baixa a moderada (ex.: arenosa, muito arenosa, areia, areia franca).
+ *     - Classes francas e intermediárias: combinações balanceadas de areia, silte e
+ *       argila em faixas específicas para franco, franco argiloso, franco argilo-siltoso,
+ *       franco argilo-arenoso, franco arenoso e classes médias.
+ *   - Prioridade de decisão por testes condicionais em sequência; pixels que não
+ *     atendem a nenhum critério recebem valor 0 (não classificados).
+ *   - Sem limitação espacial explícita; aplicação em todo o domínio do asset de entrada.
+ * Autoria
+ *   - MapBiomas Solo — contato@mapbiomas.org
+ *   - Versão: 2025-11-15 Taciara
+ ******************************************************************************/
+
+// ------------------------------------------------------------------
+// 1. Grupamentos texturais (Legenda 1)
+//    MIN: 0, MAX: 6
+// ------------------------------------------------------------------
+exports.classify_grup = function(img, bandNames, outName) {
+  var result = img.expression(
+      // Afloramento rochoso
+      '((clay == 0) && (sand == 0) && (silt == 0)) ? 1 : ' + 
+      //2. Muito Argilosa
+       '(clay >= 60) ? 2 : ' + 
+      //3. Argilosa
+       '((clay >= 35) && (clay < 60)) ? 3 : ' + 
+      //4. Siltosa 
+       '((silt >= 50) && (sand < 15) && (clay < 35)) ? 4 : ' + 
+      //5. Média
+       '((sand >= (70 + (clay))) && (sand <= (85 + (clay - 1))) && (clay < 30) && (silt < 30)) ? 5 : ' + 
+       '((clay < 30) && (sand >= (85 + (clay - 1))) && (silt < 18)) ? 5: ' + 
+      //6. Arenosa
+       '((clay < 40) && (sand >= 15) && (sand < (85 + (clay - 1))) && (silt <= 85)) ? 6 : ' + 
+      // 0. nao classificado       
+       '0',
+    {
+      sand: img.select(bandNames.sand),
+      silt: img.select(bandNames.silt),
+      clay: img.select(bandNames.clay)
+    }
+  );
+
+  return result.rename(outName).int8();
+};
+
+// ------------------------------------------------------------------
+// 2. Sub-grupamentos texturais (Legenda 2)
+//    MIN: 0, MAX: 9
+// ------------------------------------------------------------------
+exports.classify_subgrup = function(img, bandNames, outName) {
+  var result = img.expression(
+    // 1. Afloramento rochoso
+      '((clay == 0) && (sand == 0) && (silt == 0)) ? 1 : ' +     
+    // 2 - Muito argilosa
+       '(clay >= 60) ? 2 : ' + 
+    // 3. Argilosa       
+       '((clay >= 35) && (clay < 60)) ? 3 : ' +
+    // 4. Média argilosa       
+       '(((clay >= 20 && clay < 28) && (silt >= 20 && silt < 30) && (sand >= 45 && sand < 50)) || ' +
+       '((clay >= 28 && clay < 35) && (silt >= 15 && silt < 30) && (sand >= 45 && sand < 50)) || ' +
+       '((clay >= 20 && clay < 35) && (silt <= 30) && (sand >= 50))) ? 4 : ' +
+    // 5. Siltosa     
+       '((silt >= 50) && (sand < 15) && (clay < 35)) ? 5 : ' +
+    // 6. Média siltosa      
+       '((sand >= 15 && sand <= 50) && (clay < 35) && (silt >= 30 && silt < 85)) ||' +
+       '((clay > 24 && clay < 35) && (sand > 35 && sand < 46) && (silt > 18 && silt < 30))? 6 : ' + 
+    // 7. Média arenosa    
+       '((sand >= 50 && sand < 70) && (clay <= 20) && (silt > 0 && silt <= 50)) || '+
+       '((sand <= (70 + (clay))) && (clay <= 30) && (silt > 0 && silt < 30)) ? 7 : ' + 
+    // 8. Arenosa (ou arenosa média)    
+       '((sand >= (70 + (clay))) && (sand <= (85 + (clay - 1))) && (clay < 30) && (silt < 30)) ? 8 : ' + 
+    // 9. Muito arenosa
+       '((clay < 15) && (sand >= (85 + (clay - 1))) && (silt < 20)) ? 9 : ' +
+    // 0. nao classificado   
+       '0',
+      
+    {
+      sand: img.select(bandNames.sand),
+      silt: img.select(bandNames.silt),
+      clay: img.select(bandNames.clay)
+    }
+  );
+
+  return result.rename(outName).int8();
+};
+
+// ------------------------------------------------------------------
+// 3. Classes texturais (Legenda 3)
+//    MIN: 0, MAX: 14
+// ------------------------------------------------------------------
+exports.classify_textural_group = function(img, bandNames, outName) {
+  var result = img.expression(
+      // 1. Afloramento rochoso
+      '((clay == 0) && (sand == 0) && (silt == 0)) ? 1 : ' +      
+      // 2. Muito Argilosa
+        '(sand >= 0 && sand <= 40 && silt >= 0 && silt <= 40 && clay >= 60 && clay <= 100) ? 2 : ' +
+      // 3. Argilosa        
+        '(sand >=  0 && sand <= 20 && silt >= 20 && silt <= 40 && clay >= 40 && clay < 60) ? 3 : ' +
+        '(sand >= 20 && sand <= 45 && silt >= 0 && silt <= 40 && clay >= 40 && clay < 60) ? 3 : ' +
+      // 4. Argilo siltosa 
+        '(sand >=  0 && sand < 20 && silt >= 40 && silt <= 60 && clay >= 40 && clay <= 60) ? 4 : ' +
+      // 5. Franco argilosa
+        '((sand >= 20 && sand <= 45) && (silt >= 15 && silt <= 53) && (clay >= 27 && clay < 40)) ? 5 : ' +
+      // 6. Franco argilo siltosa   
+        '(sand >= 0 && sand <= 20 && silt >= 40 && silt < 73 && clay >= 27 && clay <= 40) ? 6 : ' +   
+      // 7. Argilo arenosa
+        '(sand >= 45 && sand < 65 && silt >= 0 && silt < 20 && clay >= 35 && clay <= 55) ? 7 : ' + 
+       // 8. Franco argilo arenosa 
+        '(sand >= 40 && sand <= 50 && silt >= 10 && silt < 28 && clay >= 20 && clay <= 35) ? 8 : ' +   
+        '(sand >= 50 && sand <= 80 && silt >=  0 && silt < 28 && clay >= 20 && clay < 35) ? 8 : ' +
+        '(sand >= 40 && sand <= 80 && silt >=  0 && silt < 28 && clay >= 20 && clay < 25) ? 8 : ' +
+        '(sand >= 40 && sand <= 80 && silt >=  0 && silt < 28 && clay >= 20 && clay < 35) ? 8 : ' +   
+        '(sand >= 45 && sand <= 55 && silt >= 10 && silt < 28 && clay >= 25 && clay < 35) ? 8 : ' +     
+        '(sand >= 44 && sand <= 57 && silt >= 25 && silt < 28 && clay >= 20 && clay < 30) ? 8 : ' +      
+        '(sand >= 44 && sand <= 50 && silt >= 15 && silt < 28 && clay >= 28) ? 8 : ' +  
+      // 9. Franca 
+        '(sand >= 22 && sand <= 52 && silt >= 28 && silt <= 50 && clay >= 5 && clay < 27) ? 9 : ' +   
+        '(((sand >= 50 && sand < 70) && (clay > 0 && clay < 20) && (silt >0 && silt < 50)) || ((sand <= (70 + (clay))) && (clay < 30) && (silt > 0 && silt < 30))) ? 9 : ' + 
+      // 10. Franco arenoso
+        '(sand >= 45 && sand <= 58 && silt >= 42 && silt < 50 &&  clay < 15 && clay > 100) ? 10 : ' + 
+      // 11. Areia
+        '((sand >= (70 + (clay))) && (sand <= (85 + (clay - 1))) && (clay < 30) && (silt < 30)) ? 11 : ' +
+      // 12. Areia franca
+        '((clay < 15) && (sand >= (85 + (clay - 3))) && (silt < 20)) ? 12: ' + 
+      // 13. Silte
+        '(sand >= 0 && sand < 20 && silt >= 80 && silt <= 100 && clay >= 0 && clay < 10) ? 13 : ' + 
+        '(sand >= 0 && sand < 10 && silt >= 80 && silt <= 100 && clay >= 0 && clay < 10) ? 13 : ' +
+      // 14. Franco Siltosa
+        '(sand >= 0 && sand < 50 && silt >= 50 && silt <= 100 && clay >= 0 && clay < 27) ? 14 : ' + 
+        '(sand >= 0 && sand < 20 && silt >= 53 && silt <= 80 && clay >=  0 && clay < 27) ? 14 : ' + 
+        '(sand >= 0 && sand < 10 && silt >= 60 && silt <= 90 && clay >= 10 && clay < 27) ? 14 : ' + 
+      // 0. nao classificado  
+        '0',
+    {
+      sand: img.select(bandNames.sand),
+      silt: img.select(bandNames.silt),
+      clay: img.select(bandNames.clay)
+    }
+  );
+  return result.rename(outName).int8();
+};
+
+
+/************************************************************
+ * Legendas e paletas — L1, L2, L3
+ * Exportadas para uso em scripts de aplicação
+ ************************************************************/
+
+// -------------------------
+// Paletas L1, L2, L3
+// -------------------------
+var palette_l1 = [
+  'red', // 0 não observado
+  'white', // 1 - afloramento
+  '#a83800', // 2 - Very clayey
+  '#aa8686', // 3 - Clay
+  '#35978f', // 4 - Silty 
+  '#fffe73', // 5 - Sandy
+  '#d7c5a5'  // 6 - Medium
+];
+
+var palette_l2 = [
+  'red', // 0 não observado
+  'white', // 1 - afloramento
+  '#a83800', // 2 = Muito argilosa
+  '#aa8686', // 3 = Argilosa
+  '#f4a582', // 4 = Média-argilosa 
+  '#35978f', // 5 = Siltosa  
+  '#d7c5a5', // 6 = Média-siltosa
+  '#F8D488', // 7 = Média-arenosa
+  '#E4B074', // 8 = Arenosa-média
+  '#fffe73'  // 9 = Muito-arenosa
+
+];
+
+var palette_l3 = [
+  'red', // 0 não observado
+  'white', // 1 - afloramento
+  "#a83800", // 1 - Muito Argilosa
+  "#aa8686", // 2 - Argilosa
+  "#3481a7", // 3 - Argilo Siltosa 
+  "#e9a9a9", // 4 - Franco Argilosa
+  "#80b1d3", // 5 - Silty Clay Loam 
+  "#c994c7", // 6 - Argilo Arenosa  
+  "#f4a582", // 7 - Franco Argilo Arenosa
+  "#d7c5a5", // 8 - Loam   
+  "#F8D488", // 9 - Sandy Loam
+  "#E4B074", // 10 - Franco arenoso
+  "#fffe73", // 11 - Sand
+  "#35978f", // 12 - Silte
+  "#ABBA7C" // 13 - Franco siltoso 
+
+
+];
+var legenda_l1 = {
+  1:'1 - afloramento rochoso',
+  2:'2 - Very clayey',
+  3:'3 - Clay',
+  4:'4 - Silty',
+  5:'5 - Sandy',
+  6:'6 - Medium',
+  0:'0 - não observado',
+};
+
+var legenda_l2 = {
+  1: '1 - afloramento rochoso',
+  2: '2 - Muito argilosa',
+  3: '3 - Argilosa',
+  4: '4 - Média-argilosa',
+  5: '5 - Siltosa',
+  6: '6 - Média-siltosa',
+  7: '7 - Média-arenosa',
+  8: '8 - Arenosa-média',
+  9: '9 - Muito-arenosa',
+  0: '0 - não observado',
+};
+
+var legenda_l3 = {
+  1:'1 - afloramento rochoso',
+  2: '2 - Heavy Clay',
+  3: '3 - Clay',
+  4: '4 - Silty Clay',
+  5: '5 - Clay Loam',
+  6: '6 - Silty Clay Loam ',
+  7: '7 - Sandy Clay ',
+  8: '8 - Sandy Clay Loam',
+  9: '9 - Loam',
+  10: '10 - Sandy Loam',
+  11: '11 - Loamy Sand',
+  12: '12 - Sand',
+  13: '13 - Silt Loam',
+  14: '14 - Silt',
+  0:  '0 - não observado',
+};
+
+// -------------------------
+// Exportações
+// -------------------------
+exports.palette_l1 = palette_l1;
+exports.palette_l2 = palette_l2;
+exports.palette_l3 = palette_l3;
+
+exports.legenda_l1 = legenda_l1;
+exports.legenda_l2 = legenda_l2;
+exports.legenda_l3 = legenda_l3;
