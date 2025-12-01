@@ -1,0 +1,268 @@
+
+/******************************************************************************
+ * MapBiomas Solo — Idade de uso e cobertura — séries anuais por classes C10
+ * ----------------------------------------------------------------------------
+ * Objetivo
+ *   - Calcular a idade anual (tempo de permanência contínua) de classes e
+ *     conjuntos de classes de uso e cobertura da terra a partir da série
+ *     histórica do MapBiomas Brasil Coleção 10, gerando uma imagem de idade
+ *     por ano para cada grupo temático definido.
+ * Entradas (assets)
+ *   - projects/mapbiomas-public/assets/brazil/lulc/collection10/
+ *       mapbiomas_brazil_collection10_integration_v2
+ *     (série anual de uso e cobertura do MapBiomas Brasil Coleção 10)
+ *   - geometry
+ *     (geometria de recorte definida no script para exportação)
+ * Saída (asset)
+ *   - projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/MB_2024_AGELULC_C10_v2/formacaoFlorestal
+ *   - projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/MB_2024_AGELULC_C10_v2/outrasFormacoesFlorestais
+ *   - projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/MB_2024_AGELULC_C10_v2/formacaoCampestre
+ *   - projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/MB_2024_AGELULC_C10_v2/formacaoSavanica
+ *   - projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/MB_2024_AGELULC_C10_v2/campoAlagadoAreaPantanosa
+ *   - projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/MB_2024_AGELULC_C10_v2/restingas
+ *   - projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/MB_2024_AGELULC_C10_v2/afloramento
+ *   - projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/MB_2024_AGELULC_C10_v2/vegNatural
+ *   - projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/MB_2024_AGELULC_C10_v2/lavourasTemp
+ *   - projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/MB_2024_AGELULC_C10_v2/lavourasPerene
+ *   - projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/MB_2024_AGELULC_C10_v2/lavouras
+ *   - projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/MB_2024_AGELULC_C10_v2/pastagem
+ *   - projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/MB_2024_AGELULC_C10_v2/silvicultura
+ *   - projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/MB_2024_AGELULC_C10_v2/mosaicoDeUsos
+ *   - projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/MB_2024_AGELULC_C10_v2/agropecuaria
+ *   - projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/MB_2024_AGELULC_C10_v2/areia
+ * Bandas exportadas (ordem fixa ou derivada)
+ *   - Para cada asset de saída:
+ *     - [indice]_YYYY, onde [indice] ∈ {
+ *         formacaoFlorestal, outrasFormacoesFlorestais, formacaoCampestre,
+ *         formacaoSavanica, campoAlagadoAreaPantanosa, restingas, afloramento,
+ *         vegNatural, lavourasTemp, lavourasPerene, lavouras, pastagem,
+ *         silvicultura, mosaicoDeUsos, agropecuaria, areia
+ *       } e YYYY percorre todos os anos da coleção 10;
+ *       tipo: byte; domínio: {0–255} (0 = ausência do grupo no ano,
+ *       valores ≥20 = idade crescente do grupo naquele pixel).
+ * Regras de inclusão
+ *   - A idade é calculada independentemente para cada grupo de classes, com
+ *     base nos códigos do MapBiomas:
+ *       • formacaoFlorestal: {3}
+ *       • outrasFormacoesFlorestais: {5, 6}
+ *       • formacaoCampestre: {12}
+ *       • formacaoSavanica: {4}
+ *       • campoAlagadoAreaPantanosa: {11, 32}
+ *       • restingas: {49, 50}
+ *       • afloramento: {29}
+ *       • vegNatural: {3, 4, 5, 6, 49, 50, 11, 12, 32, 29, 20, 13}
+ *       • lavourasTemp: {39, 20, 40, 62, 41}
+ *       • lavourasPerene: {46, 47, 48, 35}
+ *       • lavouras (temp+perene): {39, 20, 40, 62, 41, 46, 47, 48, 35}
+ *       • pastagem: {15}
+ *       • silvicultura: {9}
+ *       • mosaicoDeUsos: {21}
+ *       • agropecuaria: {15, 18, 19, 39, 20, 40, 62, 41, 36, 46, 47, 35, 48, 9, 21}
+ *       • areia: {23}
+ *   - Para cada ano:
+ *       • pixels pertencentes ao grupo recebem idade = idade do ano anterior + 1;
+ *       • pixels que não pertencem ao grupo recebem idade = 0.
+ *   - A banda inicial é definida como uma imagem constante com valor 19 em
+ *     um ano fictício anterior ao primeiro ano da série; assim, no primeiro ano
+ *     com ocorrência do grupo, a idade passa a 20 e cresce anualmente enquanto
+ *     o grupo se mantiver contínuo.
+ *   - As imagens são exportadas com piramidização em "mode", recortadas à
+ *     geometria fornecida (geometry) e resolução espacial de 30 m.
+ * Autoria
+ *   - MapBiomas Solo — contato@mapbiomas.org
+ *   - Versão: 2025-11 Wallace
+ *   - Versão: 2025-12-01 Taciara
+ ******************************************************************************/
+
+
+
+var version = 'v1'; // Carregando a imagem de classificação da coleção 8 do MapBiomas com a versão 'v1'
+var classification = 'projects/mapbiomas-public/assets/brazil/lulc/collection10/mapbiomas_brazil_collection10_integration_v2';
+var lulc = ee.Image(classification);
+
+// print(lulc)
+// Map.addLayer(lulc) 
+
+// Lista com objetos pensada para o processamento da idade de classes e/ou conjuntos de classes de uso e cobertura, com os dados MapBiomas
+var startings = [
+  {
+    // O nome da banda de saída. é necessario que não contenha espaços ou caracteres especiais
+    band:'formacaoFlorestal',
+    // Os valores de pixel que deseja mapear na classificação de entrada: valor da legenda do MapBiomas col8
+    value:[3], 
+    // O valor simulado para o ano imediatamente anterior ao inicio da série. No caso de por 19, o primeiro ano da série inicia com 20
+    starting:ee.Image(19),
+  },
+  
+    {  
+    // FUNDIR: Mangue [5] e Floresta Alagável [6]
+    band:'outrasFormacoesFlorestais',
+    value:[5,6],
+    starting:ee.Image(19),
+  },
+  
+    { // Formacão campestre [12]
+    band:'formacaoCampestre',
+    value:[12],
+    starting:ee.Image(19),
+    },
+    
+  { // Formação Savânica [4]
+    band:'formacaoSavanica',
+    value:[4],
+    starting:ee.Image(19),
+  },
+  { // Campo Alagado e Área Pantanosa [11], Apicum [32]
+    band:'campoAlagadoAreaPantanosa',
+    value:[11,32],
+    starting:ee.Image(19),
+  },
+
+  {  
+    // FUNDIR: Restinga Arbórea [49], Restinga Herbácea [50]) 
+    band:'restingas',
+    value:[49, 50],
+    starting:ee.Image(19),
+  },
+  
+  // adição afloramento rochoso
+    {
+    // conjunto de classes afloramento
+    band:'afloramento',
+    value:[29], 
+    starting:ee.Image(19),
+  },
+  
+  {
+    // conjunto de classes de vegetação natural
+    band:'vegNatural',
+    value:[3,4,5,6,49,50,11,12,32,29,20,13],
+    starting:ee.Image(19),
+  },
+  
+  { // Lavouras Temp: Soja [39], Cana [20], Arroz[40], Outras Lavouras Temporárias [41], Algodão[62]
+    band:'lavourasTemp',
+    value:[39,20,40,62,41],
+    starting:ee.Image(19),
+  },
+  
+    { // Lavouras Perene: Café [46], Citrus [47], Outras Lavouras Perenes [48], Dendê[35]
+    band:'lavourasPerene',
+    value:[46,47,48, 35],
+    starting:ee.Image(19),
+  },
+
+  { // Lavouras geral: Soja [39], Cana [20], Arroz[40], Outras Lavouras Temporárias [41], Algodão[62], Café [46], Citrus [47], Outras Lavouras Perenes [48], Dendê[35]
+    band:'lavouras',
+    value:[39,20,40,62,41,46,47,48, 35],
+    starting:ee.Image(19),
+  },
+  
+  { // Pastagem [15]
+    band:'pastagem',
+    value:[15],
+    starting:ee.Image(19),
+  },
+  
+  { // Silvicultura [9]
+    band:'silvicultura',
+    value:[9],
+    starting:ee.Image(19),
+  },
+  { // Mosaico de Usos [21]
+    band:'mosaicoDeUsos',
+    value:[21],
+    starting:ee.Image(19),
+  },
+
+  {
+    // conjunto de classes antrópicas/agropecuárias
+    band:'agropecuaria',
+    value:[15,18,19,39,20,40,62,41,36,46,47,35,48,9,21], 
+    starting:ee.Image(19),
+  },
+  
+    // adição praias, dunas e areiais
+    {
+    // conjunto de praias, dunas e areiais
+    band:'areia',
+    value:[23], 
+    starting:ee.Image(19),
+  },
+  
+];
+
+print('startings',startings);
+
+startings.forEach(function(obj){
+  // Iterando através do objeto 'startings', que contém informações sobre as bandas de início
+  
+  var image_band = lulc.bandNames()
+    .iterate(function(current,previous){
+      // Iterando pelas bandas da imagem LULC
+      
+      var bandName = ee.String(current);
+      
+      // Extraindo o ano da banda
+      var year = ee.Number.parse(bandName.slice(-4)).int();
+      var yearPrev = year.subtract(1);
+      
+      // Criando uma máscara para a banda LULC do ano atual
+      var lulc_band_year = lulc
+        .select(bandName)
+        .eq(obj.value)
+        .reduce('max')
+        .gte(1);
+      
+      // Selecionando a imagem do ano anterior correspondente
+      var image = ee.Image(previous)
+        .select(ee.String(obj.band).cat('_').cat(yearPrev));
+      
+      // Combinando a imagem do ano anterior com a máscara da banda LULC
+      image = ee.ImageCollection([image.rename('a'),lulc_band_year.rename('a')]).sum();
+      
+      // Criando uma máscara para o blend da banda LULC
+      var blend = lulc_band_year.updateMask(lulc_band_year.eq(0));
+      
+      // Aplicando o blend à imagem
+      image = image.blend(blend).byte();
+      
+      // Adicionando a nova banda à imagem anterior
+      return ee.Image(previous)
+        .addBands(image.rename(ee.String(obj.band).cat('_').cat(year)));
+        
+    },obj.starting.rename(ee.String(obj.band).cat('_1984')).byte());
+  
+  // Imprimindo as bandas da imagem
+  // print(image_band)
+  
+  // Criando uma nova imagem a partir das bandas selecionadas
+  var img =  ee.Image(image_band).slice(1)
+    .set({
+      'index':obj.band,
+      'create-data':ee.Date(Date.now()),
+      'modeled_with':classification,
+      'source':'GT Solos'
+    });
+    
+  print(obj.band,img);
+  Map.addLayer(img,{},obj.band); 
+    
+  // Especificando a pasta onde os assets serão armazenados
+  var output = 'projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/MB_2024_AGELULC_C10_v2/';
+  
+  // Exportando a imagem para o Google Earth Engine Assets
+  Export.image.toAsset({
+      image: img,
+      description:'age-lulc-'+obj.band,
+      assetId: output+obj.band,
+      pyramidingPolicy: 'mode',
+      // dimensions:,
+      region: geometry,
+      scale: 30,
+      // crs:,
+      // crsTransform:,
+      maxPixels: 1e11,
+      // shardSize:
+  });
+});
