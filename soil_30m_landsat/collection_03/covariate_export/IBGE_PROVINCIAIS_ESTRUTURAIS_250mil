@@ -1,0 +1,258 @@
+/******************************************************************************
+ * MapBiomas Solo — Geologia IBGE (Provincias & Subprovincias) — Dummies
+ * ----------------------------------------------------------------------------
+ * Objetivo
+ *   Exportar duas imagens multibanda (1 = ocorrência; 0 = ausência):
+ *   (i) Provincias IBGE e (ii) Subprovincias (cod_leg_1 agregado),
+ *   com dilatação morfológica de 3 km.
+ * 
+ * As bandas de saída são binárias (0 = ausência, 1 = presença) e representam a ocorrência declarada da província/subprovíncia em cada pixel.
+ * Aplicamos uma dilatação morfológica de ~3 km (focalMax) por banda, seguida de blend com a máscara original, exclusivamente para:
+ *    (i) preencher falhas de rasterização e pequenos vazios geométricos dentro da mesma unidade;
+ *    (ii) evitar perda de pixels exatamente na borda dos polígonos originais.
+ * Essa operação não suaviza nem mistura unidades distintas:
+ * cada província/subprovíncia é processada em banda própria e mantém transições abruptas entre classes diferentes.
+ * Ou seja, o processo corrige artefatos de conversão vetor→raster, não altera o contato geológico entre unidades.
+ *
+ * Entradas (assets)
+ *   - Biomas (região):  projects/mapbiomas-workspace/AUXILIAR/biomas_IBGE_250mil
+ *   - Provincias:       projects/mapbiomas-solos-workspace/assets/covariates/geology/IBGE_provinciasEstruturais_250mil
+ *   - Subprovincias:    projects/mapbiomas-solos-workspace/assets/covariates/geology/IBGE_provinciasEstruturais_250mil_subprovincias
+ *
+ * Saída (ImageCollection)
+ *   - projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/IBGE_PROVINCIAIS_ESTRUTURAIS_250mil_2025
+ *       ├─ provincias
+ *       └─ subprovincias
+ *
+ * Bandas exportadas (ordem fixa)
+ *   Provincias:
+ *     Amazonas_Solimoes_Provincia, Amazonia_Provincia, Borborema_Provincia,
+ *     Cobertura_Cenozoica_Provincia, Costeira_Margem_Continental_Provincia,
+ *     Gurupi_Provincia, Mantiqueira_Provincia, Parana_Provincia, Parecis_Provincia,
+ *     Parnaiba_Provincia, Reconcavo_Tucano_Jatoba_Provincia, Sao_Francisco_Provincia,
+ *     Sao_Luis_Provincia, Tocantins_Provincia
+ *   Subprovincias (somente cod_leg_1; confusão agregada):
+ *     Sedimentos_Subprovincia, Sedimentares_Subprovincia, Vulcanicas_Subprovincia,
+ *     Plutonicas_Subprovincia, Metamorficas_Subprovincia
+ *
+ * Regras de inclusão (apenas cod_leg_1)
+ *   0=CORPO_D_AGUA; 1=SEDIMENTOS; 2=SEDIMENTARES; 3=VULCANICAS; 4=PLUTONICAS;
+ *   5=METAMORFICAS; 6=SED_IGN_MET; 7=SED_IGN; 8=IGN_MET.
+ *
+ *   Sedimentos_Subprovincia   ← {1}
+ *   Sedimentares_Subprovincia ← {2, 7 (SED_IGN), 6 (SED_IGN_MET)}
+ *   Vulcanicas_Subprovincia   ← {3, 7, 8, 6}
+ *   Plutonicas_Subprovincia   ← {4, 7, 8, 6}
+ *   Metamorficas_Subprovincia ← {5, 8, 6}
+ *
+ * 
+Código
+1	Sedimentos
+2	Sedimentares
+3	Vulcânicas	
+4	Plutônicas
+5	Metamórficas
+6	Sed–Ign–Met
+7	Sed–Ign	
+8	Ign–Met
+ * 
+ * 
+ * 
+ * Autoria
+ *   - MapBiomas Soil — contato@mapbiomas.org
+ *   - Versão: 2025-05-01 Taciara (export corrigida p/ coleção 2025)
+ ******************************************************************************/
+
+/**** ENTRADAS ****/
+var biomas   = ee.FeatureCollection('projects/mapbiomas-workspace/AUXILIAR/biomas_IBGE_250mil');
+var prov_fc  = ee.FeatureCollection('projects/mapbiomas-solos-workspace/assets/covariates/geology/IBGE_provinciasEstruturais_250mil');
+var subprov  = ee.FeatureCollection('projects/mapbiomas-solos-workspace/assets/covariates/geology/IBGE_provinciasEstruturais_250mil_subprovincias');
+
+var bounds = biomas.geometry().bounds();
+
+/**** LISTAS FINAIS DE BANDAS (ordem fixa) ****/
+var PROV_BANDS = [
+  'Amazonas_Solimoes_Provincia',
+  'Amazonia_Provincia',
+  'Borborema_Provincia',
+  'Cobertura_Cenozoica_Provincia',
+  'Costeira_Margem_Continental_Provincia',
+  'Gurupi_Provincia',
+  'Mantiqueira_Provincia',
+  'Parana_Provincia',
+  'Parecis_Provincia',
+  'Parnaiba_Provincia',
+  'Reconcavo_Tucano_Jatoba_Provincia',
+  'Sao_Francisco_Provincia',
+  'Sao_Luis_Provincia',
+  'Tocantins_Provincia'
+];
+
+var SUBPROV_BANDS = [
+  'Sedimentos_Subprovincia',
+  
+  'Sedimentares_Subprovincia',
+  'Sedimentares_Subprovincia_prob',
+  
+  'Vulcanicas_Subprovincia',
+  'Vulcanicas_Subprovincia_prob',
+  
+  'Plutonicas_Subprovincia',
+  'Plutonicas_Subprovincia_prob',
+  
+  'Metamorficas_Subprovincia',
+  'Metamorficas_Subprovincia_prob',
+  
+];
+
+/**** PROVÍNCIAS — dicionário (nome original → banda final) ****/
+var legendProv = ee.Dictionary({
+  'Amazonas-Solimões':             'Amazonas_Solimoes_Provincia',
+  'Amazônia':                      'Amazonia_Provincia',
+  'Borborema':                     'Borborema_Provincia',
+  'Cobertura Cenozoica':           'Cobertura_Cenozoica_Provincia',
+  'Costeira e Margem Continental': 'Costeira_Margem_Continental_Provincia',
+  'Gurupi':                        'Gurupi_Provincia',
+  'Mantiqueira':                   'Mantiqueira_Provincia',
+  'Massa d\'água':                 'Massa_d_agua_Provincia', // presente no dado; não exportada
+  'Paraná':                        'Parana_Provincia',
+  'Parecis':                       'Parecis_Provincia',
+  'Parnaíba':                      'Parnaiba_Provincia',
+  'Recôncavo-Tucano-Jatobá':       'Reconcavo_Tucano_Jatoba_Provincia',
+  'São Francisco':                 'Sao_Francisco_Provincia',
+  'São Luís':                      'Sao_Luis_Provincia',
+  'Tocantins':                     'Tocantins_Provincia'
+});
+
+// padroniza etiqueta e remove features sem correspondência
+prov_fc = prov_fc.map(function(f){
+  var k = ee.String(f.get('legenda'));
+  var std = ee.Algorithms.If(legendProv.contains(k), legendProv.get(k), null);
+  return f.set('legenda_std', std);
+}).filter(ee.Filter.neq('legenda_std', null));
+
+/**** IMAGEM DE PROVÍNCIAS (pinta somente bandas solicitadas) ****/
+var prov_img0 = ee.Image(ee.List(PROV_BANDS).iterate(function(name, acc){
+  name = ee.String(name);
+  var maskFeat = prov_fc.filter(ee.Filter.eq('legenda_std', name));
+  var band = ee.Image(0).paint(maskFeat, 1).rename([name]).byte().selfMask();
+  return ee.Image(acc).addBands(band);
+}, ee.Image().select([])));
+
+var prov_img = prov_img0
+  .clip(bounds)
+  .focalMax({radius: 3000, units: 'meters'})
+  .blend(prov_img0); // preserva bordas após dilatação
+
+/**** SUBPROVÍNCIAS — agregação por cod_leg_1 ****/
+var legendSub_cod1 = ee.Dictionary({
+  'Sedimentos_Subprovincia'  : ee.List([1]),        // sem confusão
+  
+  'Sedimentares_Subprovincia': ee.List([2]),
+  'Sedimentares_Subprovincia_prob': ee.List([2, 7, 6]), // duvida 7, 6 // inclui SED_IGN e SED_IGN_MET  
+  
+  'Vulcanicas_Subprovincia'  : ee.List([3]), 
+  'Vulcanicas_Subprovincia_prob'  : ee.List([3, 7, 8, 6]), //duvida 
+  
+  'Plutonicas_Subprovincia'  : ee.List([4]),
+  'Plutonicas_Subprovincia_prob'  : ee.List([4, 7, 8, 6]), //   duvida  
+  
+  'Metamorficas_Subprovincia': ee.List([5]),
+  'Metamorficas_Subprovincia_prob': ee.List([5, 8, 6])  //, 8, 6
+});
+
+var subprov_img0 = ee.Image(ee.List(legendSub_cod1.keys()).iterate(function(bandName, acc){
+  bandName = ee.String(bandName);
+  var codes = ee.List(legendSub_cod1.get(bandName));
+  var fc    = subprov.filter(ee.Filter.inList('cod_leg_1', codes));
+  var band  = ee.Image(0).paint(fc, 1).rename([bandName]).byte().selfMask();
+  return ee.Image(acc).addBands(band);
+}, ee.Image().select([])));
+
+var subprov_img = subprov_img0
+  .clip(bounds)
+  .focalMax({radius: 3000, units: 'meters'})
+  .blend(subprov_img0);
+
+/**** IMAGENS FINAIS (metadados e ordenação) ****/
+var provincias_final = prov_img
+  .select(PROV_BANDS)
+  .unmask(0)
+  .byte()
+  .setMulti({
+    'mbs:theme':'geology',
+    'mbs:layer':'provincias',
+    'mbs:source':'IBGE 250k',
+    'mbs:dilation_m':3000,
+    'bands': PROV_BANDS.join(','),
+    'system:time_start': ee.Date('2025-01-01').millis()
+  });
+
+var subprovincias_final = subprov_img
+  .select(SUBPROV_BANDS)
+  .unmask(0)
+  .byte()
+  .setMulti({
+    'mbs:theme':'geology',
+    'mbs:layer':'subprovincias_cod_leg_1_agregado',
+    'mbs:source':'IBGE 250k',
+    'mbs:dilation_m':3000,
+    'bands': SUBPROV_BANDS.join(','),
+    'system:time_start': ee.Date('2025-01-02').millis()
+  });
+
+
+/**** Visualização ****/
+
+Map.addLayer(ee.FeatureCollection(prov_fc),  {}, 'Provincias (originais)', false);
+Map.addLayer(ee.FeatureCollection(subprov),  {}, 'Subprovincias (originais)', false);
+Map.addLayer(ee.Image(provincias_final),   {min:0, max:1}, 'Provincias — dummies', false);
+Map.addLayer(ee.Image(subprovincias_final),{min:0, max:1}, 'Subprovincias — dummies', true);
+
+
+Map.addLayer(ee.Image(subprovincias_final).select('Sedimentares_Subprovincia_prob'),{min:0, max:1}, 'Subprovincias — Sedimentares_Subprovincia_prob', true);
+Map.addLayer(ee.Image(subprovincias_final).select('Sedimentares_Subprovincia'),{min:0, max:1}, 'Subprovincias — Sedimentares_Subprovincia', true);
+
+Map.addLayer(ee.Image(subprovincias_final).select('Vulcanicas_Subprovincia_prob'),{min:0, max:1}, 'Subprovincias — Vulcanicas_Subprovincia_prob', true);
+Map.addLayer(ee.Image(subprovincias_final).select('Vulcanicas_Subprovincia'),{min:0, max:1}, 'Subprovincias — Vulcanicas_Subprovincia', true);
+
+Map.addLayer(ee.Image(subprovincias_final).select('Metamorficas_Subprovincia'),{min:0, max:1}, 'Subprovincias — Metamorficas_Subprovincia', true);
+
+
+Map.addLayer(ee.Image(subprovincias_final).select('Vulcanicas_Subprovincia'),{min:0, max:1}, 'Subprovincias — Vulcanicas_Subprovincia', true);
+Map.addLayer(ee.Image(subprovincias_final).select('Plutonicas_Subprovincia'),{min:0, max:1}, 'Subprovincias — Plutonicas_Subprovincia', true);
+
+
+/**** EXPORTAÇÃO PARA IMAGECOLLECTION (caminho confirmado) ****/
+var COLLECTION = 'projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/IBGE_PROVINCIAIS_ESTRUTURAIS_250mil_2025';
+
+Export.image.toAsset({
+  image: provincias_final.set('description','Provincias (dummies 0/1; dilatação 3km)'),
+  description: 'IBGE_PROVINCIAIS_ESTRUTURAIS_250mil_2025__provincias',
+  assetId: COLLECTION + '/provincias',
+  region: bounds,
+  scale: 30,
+  maxPixels: 1e11,
+  pyramidingPolicy: {'.default': 'mode'}
+});
+
+Export.image.toAsset({
+  image: subprovincias_final.set('description','Subprovincias cod_leg_1 agregado (dummies 0/1; dilatação 3km)'),
+  description: 'IBGE_PROVINCIAIS_ESTRUTURAIS_250mil_2025__subprovincias',
+  assetId: COLLECTION + '/subprovincias',
+  region: bounds,
+  scale: 30,
+  maxPixels: 1e11,
+  pyramidingPolicy: {'.default': 'mode'}
+});
+
+Export.image.toAsset({
+  image: subprovincias_final.set('description','Subprovincias cod_leg_1 + agregado com indicação de prob (dummies 0/1; dilatação 3km)'),
+  description: 'IBGE_PROVINCIAIS_ESTRUTURAIS_250mil_2025__subprovincias_prob',
+  assetId: COLLECTION + '/subprovincias_prob',
+  region: bounds,
+  scale: 30,
+  maxPixels: 1e11,
+  pyramidingPolicy: {'.default': 'mode'}
+});
+
