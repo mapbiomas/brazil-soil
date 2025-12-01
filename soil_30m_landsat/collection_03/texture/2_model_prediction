@@ -1,0 +1,655 @@
+/******************************************************************************
+ * MapBiomas Solo — PSD terra fina e cascalho — GBM log-ratio e exportação C03
+ * ----------------------------------------------------------------------------
+ * Objetivo
+ *   - gerar mapas nacionais de porcentagem de areia, silte, argila e cascalho
+ *     em perfis de 0–100 cm a partir de modelos Gradient Tree Boosting
+ *     treinados em log-ratio, com fechamento composicional na terra fina,
+ *     aplicação de regra para cascalho e exportação multibanda para a
+ *     coleção oficial MapBiomas Solo Collection 3
+ * Saída (asset)
+ *   - projects/mapbiomas-workspace/SOLOS/PRODUTOS_C03/sand
+ *   - projects/mapbiomas-workspace/SOLOS/PRODUTOS_C03/silt
+ *   - projects/mapbiomas-workspace/SOLOS/PRODUTOS_C03/clay
+ *   - projects/mapbiomas-workspace/SOLOS/PRODUTOS_C03/gravel
+ *   - bandas: variável_profundidadeInferior_profundidadeSuperior  
+ *   - variável_000_010cm a variável_090_100cm (passo de 10 cm)
+ *   - tipo: int16; domínio: [0, 100]
+ * Autoria
+ *   - MapBiomas Solo — contato@mapbiomas.org
+ ******************************************************************************/
+
+var version = 'c03_psd_v2025_11_18' 
+var seed = 2021;
+// -------------------------
+// 1. CARREGAR MATRIZ
+// -------------------------
+// Caminho da matriz de treinamento (todas as profundidades empilhadas)
+var matriz_path = 'projects/mapbiomas-workspace/SOLOS/AMOSTRAS/MATRIZES/collection3/' + version;
+
+// Caminho da ImageCollection (deve existir previamente nos Assets)
+var collPath = 'projects/mapbiomas-workspace/SOLOS/PRODUTOS_C03';
+
+// Carrega todas as amostras empilhadas (todas as profundidades)
+var datatraining_core = ee.FeatureCollection(matriz_path);
+// print('Matriz completa (todas as profundidades):', datatraining_core.limit(10));
+// print('Numero de amostras', datatraining_core.size());
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+// Filter sand pseudo-points (each point has 10 layers)
+// --- 1. Create and shuffle a server-side list ---
+var numbersList = ee.List.sequence(1, 500);
+var mySeed = 1234; // Your reproducible seed
+var shuffledList = numbersList.shuffle(mySeed);
+// --- 2. Get the 400 IDs you want to REMOVE (Server-Side) ---
+var numberToRemove = 250;  // must be 250
+// Use server-side .slice()
+var numbersToRemove = shuffledList.slice(0, numberToRemove);
+// Map those numbers to their string IDs (Server-Side)
+var idsToRemove = numbersToRemove.map(function(n) {
+  // This is a server-side function now
+  // It builds the string 'sand-pseudo-' + [the number]
+  return ee.String('sand-pseudo-').cat(ee.Number(n).format('%d'));
+});
+// --- 3. Filter your GEE collection (This code is already server-side) ---
+// Create a filter that finds all features IN that remove list
+var filterToRemove = ee.Filter.inList('id', idsToRemove);
+// Apply the inverted filter to KEEP everything else
+var datatraining = datatraining_core.filter(filterToRemove.not());
+
+// --- Check your work ---
+// print('Original count:', datatraining_core.size());
+// print('Final new count:', datatraining.size());
+ 
+///////////////////////////////////////////////////////////////////////////////////////////////
+// -------------------------
+// 2. DEFINIR TARGETS
+// -------------------------
+// Variáveis alvo (respostas) que queremos modelar
+var targets = [
+  'log_areia1p_argila1p',
+  'log_silte1p_argila1p',
+  'log_esqueleto1p_argila1p'
+];
+// -------------------------
+// 3. DEFINIR AS COVARIÁVEIS DE TREINO
+// -------------------------
+// todas as propriedades disponíveis no FeatureCollection de treino
+var allProps = ee.Feature(datatraining.first()).propertyNames();
+// print('Todas as propriedades disponíveis na matriz:', allProps);
+
+// ATENÇÃO: ESTE TRECHO MUDOU:
+// Lista de covariáveis para MANTER no código
+
+var propsToKeep = ee.List([
+  
+  // Inclusão da predição anterior - col2v2
+  'sand_000_030cm',
+  'silt_000_030cm',
+  'clay_000_030cm',
+  
+  // Profundidade
+  'profundidade',
+  
+  // probabilidades de ocorrência de classes de solo WRB 
+  'Ferralsols', 'Histosols', 'Nitisols', 'Vertisols', 'Plinthosols', 
+  // probabilidades de ocorrência agregadas
+  'Argisols', 'Humisols', 'Sandysols', 'Thinsols', 'Wetsols',
+
+  // Pedologia IBGE
+    'PLANOSSOLO', 'CHERNOSSOLO', 'LATOSSOLO', 'PLINTOSSOLO',
+    'GLEISSOLO', 'VERTISSOLO', 'LUVISSOLO', 'NITOSSOLO',
+    'ESPODOSSOLO', 'ARGISSOLO', 'ORGANOSSOLO', 'CAMBISSOLO',
+    'NEOSSOLO_FLUVICO', 'NEOSSOLO_QUARTZARENICO', 'NEOSSOLO_REGOLITICO', 'NEOSSOLO_LITOLICO',
+    
+    'sibcs_rasos',
+    'sibcs_btextural', 
+    'sibcs_esqueleto', 
+    'sibcs_homogeneo',
+    'sibcs_argiloso',
+
+  // black soils
+  'black_soil_prob',
+
+  // morfometria / relevo
+  'slope',
+  'convergence',
+  'cti',
+  'eastness',
+  'northness',
+  'roughness',
+  'spi',
+  'elev_stdev',
+  'dev_magnitude',
+  'dev_scale',
+  'cross_sectional',
+  'longitudinal_curvature',
+
+  // altitude
+  'elevation',
+
+  // clima Köppen
+  'koppen_l1_A',
+  'koppen_l2_Af',
+  'koppen_l2_Am',
+  'koppen_l2_As',
+  'koppen_l2_Aw',
+
+  'koppen_l1_B',
+  'koppen_l2_Bs',
+  'koppen_l3_Bsh',
+
+  'koppen_l1_C',
+  'koppen_l2_Cf',
+  'koppen_l3_Cfa',
+  'koppen_l3_Cfb',
+
+  'koppen_l2_Cw',
+  'koppen_l3_Cwa',
+  'koppen_l3_Cwb',
+  'koppen_l3_Cwc',
+
+  'koppen_l2_Cs',
+  'koppen_l3_Csa',
+  'koppen_l3_Csb',
+
+  // biomas IBGE
+  'Amazonia',
+  'Caatinga',
+  'Cerrado',
+  'Mata_Atlantica',
+  'Pampa',
+  'Pantanal',
+  'Zona_Costeira',
+
+  // fitofisionomias IBGE
+  'Campinarana',
+  'Estepe',
+  'Floresta_Estacional_Decidual',
+  'Floresta_Estacional_Semidecidual',
+  'Floresta_Estacional_Sempre_Verde', 
+  'Floresta_Ombrofila_Aberta',
+  'Floresta_Ombrofila_Densa',
+  'Floresta_Ombrofila_Mista',
+  'Formacao_Pioneira',
+  'Savana',
+  'Savana_Estepica',
+
+  // províncias estruturais (IBGE)
+  'Amazonas_Solimoes_Provincia',
+  'Amazonia_Provincia',
+  'Borborema_Provincia',
+  'Cobertura_Cenozoica_Provincia',
+  'Costeira_Margem_Continental_Provincia',
+  'Gurupi_Provincia',
+  'Mantiqueira_Provincia',
+  //'Parana_Provincia',
+  'Parecis_Provincia',
+  'Parnaiba_Provincia',
+  'Reconcavo_Tucano_Jatoba_Provincia',
+  'Sao_Francisco_Provincia',
+  'Sao_Luis_Provincia',
+  'Tocantis_Provincia',
+
+  // subprovíncias
+  'sedimentos',
+  'sedimentares_prob',
+  'vulcanicas_prob',
+  'plutonicas_prob',
+  'metamorficas_prob',
+  'sedimentares',
+  'vulcanicas',
+  'plutonicas',
+  'metamorficas',
+  
+  // ocorrencia conjunta de bioma e solo
+  'pantanal_plintossolo',
+  'pantanal_neossolo_quartzarenico',
+  'pantanal_gleissolo',
+  'pantanal_planossolo',
+  
+  'caatinga_latossolo',
+
+  // ocorrencia conjunta de solo e subprovincia 
+  'latossolo_vulcanicas',
+  'latossolo_sedimentares',
+  'latossolo_sedimentos',
+  'latossolo_metamorficas',
+  'latossolo_plutonicas',
+  
+  'argissolo_metamorficas',
+  'argissolo_sedimentares',
+  'argissolo_sedimentos',
+  
+  'raso_vulcanica',
+  'raso_sedimentares',
+  'raso_plutonica',
+
+  // ocorrencia conjunta de bioma e subprovincia   
+  'pantanal_sedimentos',
+  'amazonia_sedimentos',
+  'cerrado_sedimentos',
+  'pampa_sedimentos',
+  'caatinga_sedimentos',
+  'mata_atlantica_sedimentos',
+  
+// Distance
+  'Distance_to_sand_v33',
+  'Distance_to_rock_v33', // decisão final
+
+// Coordenadas
+  // 'latitude',
+ // 'longitude',
+  
+  // estabilidade hídrica (alagamento recorrente)
+  'Water_40y_recurrence'
+  ])
+
+var candidate_covariates = allProps.filter(
+  ee.Filter.inList('item', propsToKeep)
+).sort();
+var covariatesArray = candidate_covariates.sort().getInfo();
+
+// 1) Covariáveis utilizadas (interseção entre propriedades da matriz e lista de inclusão)
+var propsUsed = allProps.filter(ee.Filter.inList('item', propsToKeep)).sort();
+
+// 2) Covariáveis removidas (presentes na matriz, mas ausentes na lista de inclusão)
+var propsRemoved = allProps.removeAll(propsUsed).sort();
+
+// 3) Nomes incluídos em propsToKeep que não existem na matriz original
+var propsMissing = propsToKeep.removeAll(allProps).sort();
+
+// print('Covariáveis utilizadas:', propsUsed);
+// print('Covariáveis removidas:', propsRemoved);
+// print('Itens de propsToKeep que não existem na matriz:', propsMissing);
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// -------------------------
+// FUNÇÃO PARA TREINAR UM MODELO POR ALVO
+// -------------------------
+
+function trainGBM_global(trainingFC, targetProperty, covariatesArray) {
+
+  // filtra amostras que têm valor válido para essa resposta
+  var filtered = trainingFC.filter(ee.Filter.notNull([targetProperty]));
+
+  var gtb_params = {
+    numberOfTrees: 400,   // Similar ao 'ntree' do RF
+    shrinkage: 0.01,    // Parâmetro de taxa de aprendizado (learning rate)
+    samplingRate: 0.632,  // Similar ao 'sampsize' (bagFraction)
+    maxNodes: 25,       // Similar ao 'maxNodes' do RF
+    seed: seed       // Semente para reprodutibilidade
+  };
+
+  var model = ee.Classifier
+    .smileGradientTreeBoost({
+      numberOfTrees: gtb_params.numberOfTrees,
+      shrinkage: gtb_params.shrinkage,
+      samplingRate: gtb_params.samplingRate,
+      maxNodes: gtb_params.maxNodes,
+      seed: gtb_params.seed
+    })
+    .setOutputMode('REGRESSION') 
+    .train({
+      features: filtered,
+      classProperty: targetProperty,
+      inputProperties: covariatesArray
+    });
+
+  return model;
+}
+////////////////////////////////////////////////////////////////////////////////////////////////
+// -------------------------
+// TREINAR OS MODELOS
+//    (UM POR PROFUNDIDADE E POR VARIÁVEL-ALVO)
+// -------------------------
+
+// 1. Parâmetros de profundidade
+var depthCenters = [5, 15, 25, 35, 45, 55, 65, 75, 85, 95];
+var HALF_WINDOW = 5;
+
+// 2. Pré-processamento
+var datatraining_prepared = datatraining.map(function(f){
+  return f.set('prof_val', ee.Number(f.get('profundidade')));
+});
+
+// Dicionário JS com os modelos finais: { 'd5': {targetA: modelA, targetB: modelB, ...}, ... }
+var models_by_depth_target = {};
+
+// 3. Loop de modelagem
+depthCenters.forEach(function(d) {
+  var datatraining_d = datatraining_prepared
+    .filter(ee.Filter.gte('prof_val', d - HALF_WINDOW))
+    .filter(ee.Filter.lte('prof_val', d + HALF_WINDOW));
+
+
+  // dicionário temporário para esta profundidade
+  var models_depth = {};
+
+  // treinar para cada variável-alvo
+  targets.forEach(function (targetVar) {
+    var model = trainGBM_global(datatraining_d, targetVar, covariatesArray);
+    models_depth[targetVar] = model;
+  });
+if (d === 95) print('Modelo GBM finalizado para todas as profundidades.');
+  models_by_depth_target['d' + d] = models_depth;
+});
+
+// print('Modelos GBM treinados por profundidade e variável:', models_by_depth_target);
+
+// -------------------------
+// PREDIÇÃO ESPACIAL COM BACK-TRANSFORM
+// -------------------------
+
+// Área de interesse (biomas do IBGE, por exemplo)
+var biomas = ee.FeatureCollection('projects/mapbiomas-workspace/AUXILIAR/biomas_IBGE_250mil');
+var aoi = biomas.geometry().bounds();
+
+// Covariáveis estáticas base (substitua pelo módulo oficial)
+var baseCovariatesImage = require('users/taciaraz/mapbiomas_solo:collection3/psd/0_psd_covariate_source')
+  .static_covariates();
+
+// Parâmetros de ajuste
+var psd_sum = 100.4;
+var psd_plus = 0.1;
+
+// Função para adicionar a banda de profundidade
+function makeCovariatesAtDepth(baseImg, d) {
+  var depthBand = ee.Image.constant(d).rename('profundidade').toFloat();
+  return ee.Image.cat([baseImg, depthBand]).select(candidate_covariates);
+}
+
+// Stacks finais
+var stack_areia = [];
+var stack_silte = [];
+var stack_argila = [];
+var stack_esqueleto = [];
+
+depthCenters.forEach(function (d) {
+
+  var cov_d = makeCovariatesAtDepth(baseCovariatesImage, d);
+
+  // pegar o conjunto de modelos da profundidade d
+  var model_dict = models_by_depth_target['d' + d];
+
+  // Predições em log-ratio usando os modelos de d
+  var log_a = cov_d.classify(model_dict['log_areia1p_argila1p']);
+  var log_s = cov_d.classify(model_dict['log_silte1p_argila1p']);
+  var log_e = cov_d.classify(model_dict['log_esqueleto1p_argila1p']);
+  
+  
+  // -----------------------------------------------------------
+  // Back-transform das frações log-ratio → solo inteiro (%)
+  // -----------------------------------------------------------
+  var argila = ee.Image(0).expression(
+    'exp(0) / (1 + exp(log_s) + exp(log_a) + exp(log_e))',
+    {log_s: log_s, log_a: log_a, log_e: log_e}
+  );
+  var silte = ee.Image(0).expression('exp(log_s) * argila', {log_s: log_s, argila: argila});
+  var areia = ee.Image(0).expression('exp(log_a) * argila', {log_a: log_a, argila: argila});
+  var esqueleto = ee.Image(0).expression('exp(log_e) * argila', {log_e: log_e, argila: argila});
+
+  // -----------------------------------------------------------
+  // Ajuste de escala (sem arredondar ainda) e correção de negativos
+  // -----------------------------------------------------------
+  argila    = argila.multiply(psd_sum).subtract(psd_plus).max(0);
+  silte     = silte.multiply(psd_sum).subtract(psd_plus).max(0);
+  areia     = areia.multiply(psd_sum).subtract(psd_plus).max(0);
+  esqueleto = esqueleto.multiply(psd_sum).subtract(psd_plus).max(0);
+
+  argila    = argila.where(argila.lt(0), 0);
+  silte     = silte.where(silte.lt(0), 0);
+  areia     = areia.where(areia.lt(0), 0);
+  esqueleto = esqueleto.where(esqueleto.lt(0), 0);
+
+// -----------------------------------------------------------
+// Transformação para TERRA FINA (100% base TF)
+// -----------------------------------------------------------
+
+// TF = solo inteiro – cascalho
+var terra_fina = ee.Image(100).subtract(esqueleto);
+var terra_fina_safe = terra_fina.where(terra_fina.lte(0), 1e-6);
+
+// Reescalar areia/silte/argila previstos para 100% TF
+var areia_tf  = areia.divide(terra_fina_safe).multiply(100);
+var silte_tf  = silte.divide(terra_fina_safe).multiply(100);
+var argila_tf = argila.divide(terra_fina_safe).multiply(100);
+
+// -----------------------------------------------------------
+// Fechamento composicional Aitchison (1986) na TF
+// -----------------------------------------------------------
+var soma_tf = areia_tf.add(silte_tf).add(argila_tf);
+var soma_tf_safe = soma_tf.where(soma_tf.lte(0), 1e-6);
+var fator_tf = ee.Image(100).divide(soma_tf_safe);
+
+areia_tf  = areia_tf.multiply(fator_tf);
+silte_tf  = silte_tf.multiply(fator_tf);
+argila_tf = argila_tf.multiply(fator_tf);
+
+//-----------------------------------------------------------
+// (3) Fechamento final 
+//-----------------------------------------------------------
+var soma_pre = areia_tf.add(silte_tf).add(argila_tf);
+var soma_pre_safe = soma_pre.where(soma_pre.eq(0), 1e-6);
+var fator_pre = ee.Image(100).divide(soma_pre_safe);
+
+areia_tf  = areia_tf.multiply(fator_pre);
+silte_tf  = silte_tf.multiply(fator_pre);
+argila_tf = argila_tf.multiply(fator_pre);
+
+//-----------------------------------------------------------
+// Arredondamento
+//-----------------------------------------------------------
+areia_tf  = areia_tf.round();
+silte_tf  = silte_tf.round();
+argila_tf = argila_tf.round();
+
+//-----------------------------------------------------------
+// Correção final — manter soma = 100 (ajuste mínimo)
+//-----------------------------------------------------------
+var soma_round = areia_tf.add(silte_tf).add(argila_tf);
+var erro = soma_round.subtract(100);
+
+// Ajuste final no silte
+silte_tf = silte_tf.subtract(erro);
+
+// Clamp final
+areia_tf  = areia_tf.clamp(0, 100);
+silte_tf  = silte_tf.clamp(0, 100);
+argila_tf = argila_tf.clamp(0, 100);
+
+//-----------------------------------------------------------
+// APLICAR A REGRA DO ESQUELETO ≥ 95%  (final da pipeline)
+//-----------------------------------------------------------
+
+// Arredondar cascalho antes de aplicar a regra final
+esqueleto = esqueleto.round().clamp(0, 100);
+
+// Quando esqueleto ≥ 95%, define:
+// esqueleto = 100%
+// areia_tf, silte_tf, argila_tf = 0%
+
+var mask_grossa_max = esqueleto.gte(95);
+
+areia_tf  = areia_tf.where(mask_grossa_max, 0);
+silte_tf  = silte_tf.where(mask_grossa_max, 0);
+argila_tf = argila_tf.where(mask_grossa_max, 0);
+esqueleto = esqueleto.where(mask_grossa_max, 100);
+
+// Empilhar resultados
+stack_areia.push(areia_tf);
+stack_silte.push(silte_tf);
+stack_argila.push(argila_tf);
+stack_esqueleto.push(esqueleto);
+});
+
+// ---------------------------------------------------------
+// PREPARAR PARA EXPORTAR IMAGENS MULTIBANDA POR VARIÁVEL
+// -----------------------------------------------------------
+var map_areia     = ee.Image.cat(stack_areia).clip(aoi);
+var map_silte     = ee.Image.cat(stack_silte).clip(aoi);
+var map_argila    = ee.Image.cat(stack_argila).clip(aoi);
+var map_esqueleto = ee.Image.cat(stack_esqueleto).clip(aoi);
+
+// -----------------------------------------------------------
+// FUNÇÃO PARA RENOMEAR BANDAS NO PADRÃO nome_000_010cm
+// -----------------------------------------------------------
+function renameBandsByDepth(img, variableName, stepCm) {
+  var bandCount = img.bandNames().size();
+
+  var newNames = ee.List.sequence(0, ee.Number(bandCount).subtract(1)).map(
+    function(idx) {
+      idx = ee.Number(idx);
+      var ini = idx.multiply(stepCm);  // profundidade inicial
+      var fim = ini.add(stepCm);       // profundidade final
+
+      var iniStr = ini.format('%03d'); // "000"
+      var fimStr = fim.format('%03d'); // "010"
+
+      return ee.String(variableName)
+        .cat('_')
+        .cat(iniStr)
+        .cat('_')
+        .cat(fimStr)
+        .cat('cm');
+    }
+  );
+
+  return img.rename(newNames);
+}
+
+
+var stepDepth = 10;
+
+map_areia     = renameBandsByDepth(map_areia, 'sand', stepDepth);
+map_silte     = renameBandsByDepth(map_silte, 'silt', stepDepth);
+map_argila    = renameBandsByDepth(map_argila, 'clay', stepDepth);
+map_esqueleto = renameBandsByDepth(map_esqueleto, 'gravel', stepDepth);
+
+
+//-----------------------------------------------------------
+// APLICAR A REGRA DE SOLO EXISTENTE EM PROFUNDIDADE
+//-----------------------------------------------------------
+var prof = ee.Image('projects/mapbiomas-workspace/SOLOS/PRODUTOS_C03/psd_final/profundidade_solo_c03_prev');
+var profTot = prof.select('profundidade_solo_cm');
+
+// PSD — faixas fixas de 10 cm
+function aplicaRegraPSD(img, nome) {
+  var fim = ee.Number.parse(nome.slice(nome.length - 5, nome.length - 2));
+  var cond = profTot.gte(fim);
+  return img.where(cond.not(), 0);
+}
+
+
+var bandas_areia = [
+  'sand_000_010cm','sand_010_020cm','sand_020_030cm',
+  'sand_030_040cm','sand_040_050cm','sand_050_060cm',
+  'sand_060_070cm','sand_070_080cm','sand_080_090cm',
+  'sand_090_100cm'
+];
+
+var bandas_silte = [
+  'silt_000_010cm','silt_010_020cm','silt_020_030cm',
+  'silt_030_040cm','silt_040_050cm','silt_050_060cm',
+  'silt_060_070cm','silt_070_080cm','silt_080_090cm',
+  'silt_090_100cm'
+];
+
+var bandas_argila = [
+  'clay_000_010cm','clay_010_020cm','clay_020_030cm',
+  'clay_030_040cm','clay_040_050cm','clay_050_060cm',
+  'clay_060_070cm','clay_070_080cm','clay_080_090cm',
+  'clay_090_100cm'
+];
+
+// Atribuir 0 onde se camada é maior que a profundidade total do solo
+var areiaFinal = ee.Image.cat(bandas_areia.map(function(b){
+  return aplicaRegraPSD(map_areia.select(b), b);
+})).rename(bandas_areia);
+
+var silteFinal = ee.Image.cat(bandas_silte.map(function(b){
+  return aplicaRegraPSD(map_silte.select(b), b);
+})).rename(bandas_silte);
+
+var argilaFinal = ee.Image.cat(bandas_argila.map(function(b){
+  return aplicaRegraPSD(map_argila.select(b), b);
+})).rename(bandas_argila);
+
+
+// // (opcional) conferir nomes das bandas
+print('Bandas AREIA:', areiaFinal.bandNames());
+print('Bandas SILTE:', silteFinal.bandNames());
+print('Bandas ARGILA:', argilaFinal.bandNames());
+print('Bandas ESQUELETO:', map_esqueleto.bandNames());
+
+
+
+// ----------------------------------------------------------
+// 2. MÁSCARAS: ÁGUA (MB Solo)
+// -----------------------------------------------------------
+
+// Máscara de água não está sendo necessária devido à inclusão da predição col2v2
+// já mascarada
+
+// // LULC 2023 (MapBiomas Collection 9)
+// var lulc = ee.Image(
+//   'projects/mapbiomas-public/assets/brazil/lulc/collection9/mapbiomas_collection90_integration_v1'
+// ).select('classification_2023');
+
+// // Máscara de superfície de água (MapBiomas Solo – 2023)
+// var waterMask = ee.Image(
+//   'projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/MB_2023_C90_WATER/MB_WATER_WATER_SURFACE_MASK_2023'
+// ).select('classification_2023');
+
+// // Água = 1 → remover
+// var mask_water = waterMask.unmask(0).neq(1);
+// // Aplicar a máscara a todos os mapas
+// map_areia     = map_areia.updateMask(mask_water);
+// map_silte     = map_silte.updateMask(mask_water);
+// map_argila    = map_argila.updateMask(mask_water);
+// map_esqueleto = map_esqueleto.updateMask(mask_water);
+
+// -----------------------------------------------------------
+// 4. VISUALIZAÇÃO (INSPEÇÃO + PRIMEIRA PROFUNDIDADE)
+// -----------------------------------------------------------
+var paleta = {
+  min: 0, max: 100,
+  palette: [
+    "#DEBBBD", "#AA8686", "#956262", "#9C5050",
+    "#8C3306", "#932703", "#7A1D03", "#6C1902",
+    "#5C1402", "#4E1101"
+  ]
+};
+
+// Camadas completas (todas as profundidades), ocultas – para usar no Inspector
+Map.addLayer(areiaFinal, {}, 'Areia - full stack [insp]', false);
+Map.addLayer(silteFinal, {}, 'Silte - full stack [insp]', false);
+Map.addLayer(argilaFinal, {}, 'Argila - full stack [insp]', false);
+Map.addLayer(map_esqueleto, {}, 'Cascalho - full stack [insp]', false);
+
+// Camadas visuais (apenas a primeira profundidade, já renomeada *_000_010cm)
+Map.addLayer(areiaFinal.select(0), paleta, 'Areia 000_010cm (%) [vis]', true);
+Map.addLayer(silteFinal.select(0), paleta, 'Silte 000_010cm (%) [vis]', false);
+Map.addLayer(argilaFinal.select(0), paleta, 'Argila 000_010cm (%) [vis]', false);
+Map.addLayer(map_esqueleto.select(0), paleta, 'Cascalho 000_010cm (%) [vis]', false);
+
+// -----------------------------------------------------------
+// EXPORTAR PARA A IMAGECOLLECTION OFICIAL DA C03
+// -----------------------------------------------------------
+// Função auxiliar para exportar uma imagem multibanda para a coleção
+function exportToCollection(img, name) {
+  Export.image.toAsset({
+    image: img.int16(),
+    description: 'Taciara-GTSOLO-' + name,                 
+    assetId: collPath + '/mapbiomas_soil_collection3_' + name,
+    region: aoi,
+    scale: 30,
+    maxPixels: 1e13
+  });
+}
+
+// Exportar cada variável (uma imagem multibanda por variável)
+exportToCollection(areiaFinal,     'sand');
+exportToCollection(silteFinal,     'silt');
+exportToCollection(argilaFinal,    'clay');
+exportToCollection(map_esqueleto, 'rock_fragments');
