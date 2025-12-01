@@ -1,0 +1,191 @@
+/******************************************************************************
+ * MapBiomas Solo — Distância Euclidiana C10 — Geração de métricas por classe-alvo
+ * ----------------------------------------------------------------------------
+ * Objetivo
+ *   - Derivar imagens de distância euclidiana (m) a partir da ocorrência histórica
+ *     das classes-alvo na série MapBiomas C10, com variantes litorânea/continental.
+ * Entradas (assets)
+ *   - projects/mapbiomas-public/assets/brazil/lulc/collection10/mapbiomas_brazil_collection10_integration_v2 (série LULC C10)
+ *   - projects/mapbiomas-workspace/AUXILIAR/biomas_IBGE_250mil (máscara nacional)
+ *   - projects/mapbiomas-workspace/SOLOS/REFERENCIAS/IBGE/SistCostMar_AmAz_2024 (Sistema Costeiro e Marinho)
+ *   - classes-alvo: {23} praia_duna_areal; {29} afloramento_rochoso
+ * Saída (asset)
+ *   - projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/DISTANCE_C10_v3/distance_[alvo]_c10_v3_fd1000_md7000
+ *   - variantes: distance_[alvo]_litoraneo_c10_v3_fd1000_md7000; distance_[alvo]_continental_c10_v3_fd1000_md7000
+ * Bandas exportadas (ordem fixa ou derivada)
+ *   - [nome_alvo]_distance_m; tipo: int16; domínio: [1,7000]
+ * Regras de inclusão
+ *   - Presença definida por ocorrência em ≥1 ano da série (1985–2024)
+ *   - Distância calculada com kernels euclidianos: raio inicial 1000 m e limite 7000 m
+ *   - Aplicação de máscara nacional; variantes restritas a máscaras litorânea e continental
+ *   - Valores saturados em 7000 m e preenchimento externo conforme máscara aplicada
+ * Autoria
+ *   - MapBiomas Solo — contato@mapbiomas.org
+ *   - Versão: 2025-11-13 Wallace
+ ******************************************************************************/
+// --- CONFIGURAÇÕES INICIAIS ---
+var version = 'v3';
+var classification = 'projects/mapbiomas-public/assets/brazil/lulc/collection10/mapbiomas_brazil_collection10_integration_v2';
+var lulc = ee.Image(classification);
+
+// Controle opcional para criar coleções no Asset Manager
+var create_collections = false;
+
+// Máscara nacional e limites
+var biomas = ee.FeatureCollection('projects/mapbiomas-workspace/AUXILIAR/biomas_IBGE_250mil');
+var brasil_mask  = ee.Image().paint(biomas).eq(0);   // para updateMask()
+var brasil_bounds = biomas.geometry().bounds();      // para export
+
+// Visualização do último ano (C10)
+Map.addLayer(lulc.slice(-1), {}, 'LULC C10 (último ano)', false);
+
+// 3.1) Máscara binária do Sistema Costeiro e Marinho
+// Opção clara e estável: "dentro" = litorâneo, "fora" = continental
+var scm = ee.FeatureCollection('projects/mapbiomas-workspace/SOLOS/REFERENCIAS/IBGE/SistCostMar_AmAz_2024');
+var coastal = ee.Image().paint(scm).eq(0).unmask(); // 1 nos polígonos, 0 fora
+var mask_litoraneo  = coastal.eq(1);
+var mask_continental = coastal.neq(1);
+
+Map.addLayer(scm,{},'scm',false);
+// Map.addLayer(coastal,{},'coastal',false);
+Map.addLayer(mask_litoraneo.selfMask(),{palette:['000080']},'mask_litoraneo',false);
+Map.addLayer(mask_continental.selfMask(),{palette:['800000']},'mask_continental',false);
+
+// --- PARÂMETROS ---
+var maxDistance = 7000;   // metros (cap)
+var firstDistance = 1000; // metros (raio inicial do kernel)
+
+// Tags para nomes e filtros
+var fdTag = 'fd' + firstDistance;  // ex.: fd7000
+var mdTag = 'md' + maxDistance;    // ex.: md7000
+var nameSuffix = '_' + fdTag + '_' + mdTag; // ex.: _fd7000_md7000
+
+// --- ALVOS / CLASSES ---
+var targets = [
+  { name: 'praia_duna_areal',    codes: [23] },
+  { name: 'afloramento_rochoso', codes: [29] }
+];
+
+// --- PROCESSAMENTO ---
+var outRoot = 'projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/DISTANCE_C10_' + version + '/';
+// Criação da pasta da coleção (comentado, apenas se necessário ativar futuramente)
+// ee.data.createAsset({type: 'ImageCollection'}, outRoot.slice(0,-1));
+
+targets.forEach(function(tgt) {
+  print('Processando alvo:', tgt.name, '| códigos:', tgt.codes);
+
+  // 1) Imagem observada 0/1 por banda
+  var imageObserved = lulc.multiply(0);
+  tgt.codes.forEach(function(classCode){
+    imageObserved = imageObserved.where(lulc.eq(classCode), 1);
+  });
+  imageObserved = imageObserved.byte(); // multibanda 0/1
+
+  // 2) Presença em pelo menos um ano
+  imageObserved = imageObserved.reduce('sum').gte(1);
+      
+  // 3) Distância euclidiana (m) com máscara geral
+  var source = imageObserved.selfMask();
+  var dist_1 = source.unmask().distance(ee.Kernel.euclidean(firstDistance + 1, 'meters'), false).lte(firstDistance);
+  var dist_2 = dist_1.distance(ee.Kernel.euclidean(maxDistance + 1, 'meters'), false);
+  var dist = source.unmask(maxDistance)
+    .where(dist_1.eq(1), 2)
+    .where(dist_2.gte(1), dist_2)
+    .where(source.eq(1), 1)
+    .toInt16()
+    .rename(tgt.name + '_distance_m')
+    .updateMask(brasil_mask);
+  
+  dist = dist.where(dist.gte(maxDistance),maxDistance);
+  
+  // --- VISUALIZAÇÃO (DESLIGADA POR PADRÃO) ---
+  Map.addLayer(dist.randomVisualizer(), {}, 'Max Distância (m) - ' + tgt.name, false);
+  Map.addLayer(dist, {min:1, max:maxDistance}, 'Distância (m) - ' + tgt.name, false);
+  Map.addLayer(source.selfMask(), {min:0, max:1, palette:['ffffff','ff9900']}, 'Presença (≥1 ano) - ' + tgt.name, false);
+  
+  // --- EXPORT ÚNICO (SOMENTE DISTÂNCIA) ---
+  Export.image.toAsset({
+    image: dist.set({
+      description: 'Distância euclidiana (m) - ' + tgt.name,
+      class_codes: tgt.codes.join(','),
+      version: version,
+      first_distance_m: firstDistance,
+      max_distance_m: maxDistance,
+      first_distance_tag: fdTag,
+      max_distance_tag: mdTag,
+      target_name: tgt.name
+    }),
+    description: 'WS_IPAM-SOLO-distance_' + tgt.name + '_c10_' + version + nameSuffix,
+    assetId: outRoot + 'distance_' + tgt.name + '_c10_' + version + nameSuffix,
+    pyramidingPolicy: 'mode',
+    region: brasil_bounds,
+    scale: 30,
+    maxPixels: 1e13
+  });
+
+  // --- EXPORTS ADICIONAIS PARA PRAIA_DUNA_AREAL ---
+  if (tgt.name === 'praia_duna_areal') {
+
+    // 3.2) Derivados mascarados (unmask(0) para preencher fora da máscara com 0)
+    var dist_litoraneo = dist.updateMask(mask_litoraneo).unmask(0)
+      .rename(tgt.name + '_litoraneo_distance_m')
+      .updateMask(brasil_mask);
+    var dist_continental = dist.updateMask(mask_continental).unmask(0)
+      .rename(tgt.name + '_continental_distance_m')
+      .updateMask(brasil_mask);
+
+    // (opcional) visualizar desativado por padrão
+    Map.addLayer(dist_litoraneo, {min:1, max:maxDistance}, 'Distância (m) - ' + tgt.name + ' (litorâneo)', false);
+    Map.addLayer(dist_continental, {min:1, max:maxDistance}, 'Distância (m) - ' + tgt.name + ' (continental)', false);
+
+    // 3.3) Exports específicos (com sufixo e mesmas tags fd/md)
+    Export.image.toAsset({
+      image: dist_litoraneo.set({
+        description: 'Distância euclidiana (m) - ' + tgt.name + ' (litorâneo)',
+        class_codes: tgt.codes.join(','),
+        version: version,
+        first_distance_m: firstDistance,
+        max_distance_m: maxDistance,
+        first_distance_tag: fdTag,
+        max_distance_tag: mdTag,
+        target_name: tgt.name,
+        target_subtype: 'litoraneo'
+      }),
+      description: 'WS_IPAM-SOLO-distance_' + tgt.name + '_litoraneo_c10_' + version + nameSuffix,
+      assetId: outRoot + 'distance_' + tgt.name + '_litoraneo_c10_' + version + nameSuffix,
+      pyramidingPolicy: 'mode',
+      region: brasil_bounds,
+      scale: 30,
+      maxPixels: 1e13
+    });
+
+    Export.image.toAsset({
+      image: dist_continental.set({
+        description: 'Distância euclidiana (m) - ' + tgt.name + ' (continental)',
+        class_codes: tgt.codes.join(','),
+        version: version,
+        first_distance_m: firstDistance,
+        max_distance_m: maxDistance,
+        first_distance_tag: fdTag,
+        max_distance_tag: mdTag,
+        target_name: tgt.name,
+        target_subtype: 'continental'
+      }),
+      description: 'WS_IPAM-SOLO-distance_' + tgt.name + '_continental_c10_' + version + nameSuffix,
+      assetId: outRoot + 'distance_' + tgt.name + '_continental_c10_' + version + nameSuffix,
+      pyramidingPolicy: 'mode',
+      region: brasil_bounds,
+      scale: 30,
+      maxPixels: 1e13
+    });
+  }
+});
+
+// --- LOGS FINAIS ---
+print('Alvos processados:', targets.map(function(o){ return o.name; }));
+print('Parâmetros:', {
+  maxDistance: maxDistance,
+  firstDistance: firstDistance,
+  criterio: '≥ 1 ano (1985–2024)',
+  version: version
+});
