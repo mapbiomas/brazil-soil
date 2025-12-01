@@ -1,0 +1,80 @@
+/******************************************************************************
+ * MapBiomas Solo — Máscara de Areia — Série Histórica (1985–2024)
+ * ----------------------------------------------------------------------------
+ * Objetivo
+ *   - Identificar a ocorrência de classe “areia” (código 23) ao menos um ano
+ *     na série temporal 1985–2024, gerando máscara binária consolidada.
+ * Entradas (assets)
+ *   - projects/mapbiomas-public/assets/brazil/lulc/collection10/
+ *     mapbiomas_brazil_collection10_integration_v2 (classificação anual)
+ * Saída (asset)
+ *   - projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/MB_2024_SANDMASK
+ * Bandas exportadas (ordem fixa ou derivada)
+ *   - sand-mask; tipo: uint8; domínio: {0,1}
+ * Regras de inclusão
+ *   - Seleção da classe 23 (areia) para cada ano de 1985–2024
+ *   - Consolidação por soma interanual e limiar ≥ 1 para presença
+ *   - Recorte espacial definido por “geometry”
+ * Autoria
+ *   - MapBiomas Solo — contato@mapbiomas.org
+ *   - Versão: 2025-11-29 Taciara
+ ******************************************************************************/
+ 
+var version = 'v1'; // Carregando a imagem de classificação da coleção 8 do MapBiomas com a versão 'v1'
+
+// Importar LULC
+var classification = 'projects/mapbiomas-public/assets/brazil/lulc/collection10/mapbiomas_brazil_collection10_integration_v2';
+var lulc = ee.Image(classification);
+
+// Lista explícita de anos
+var years = [
+  1985, 1986, 1987, 1988, 1989,
+  1990, 1991, 1992, 1993, 1994,
+  1995, 1996, 1997, 1998, 1999,
+  2000, 2001, 2002, 2003, 2004,
+  2005, 2006, 2007, 2008, 2009,
+  2010, 2011, 2012, 2013, 2014,
+  2015, 2016, 2017, 2018, 2019,
+  2020, 2021, 2022, 2023, 2024
+];
+
+// Criar indicadores 0/1 usando a lista explícita
+var indicatorImages = years.map(function(year) {
+  return lulc
+    .select('classification_' + year)
+    .eq(23)                      // 1 se areia; 0 se não
+    .rename('areia_' + year);
+});
+
+// Empilhar indicadores
+var indicatorStack = ee.ImageCollection(indicatorImages).toBands();
+
+// Somar todas as bandas
+var sumSand = indicatorStack.reduce(ee.Reducer.sum());
+
+
+
+// Máscara final: ≥ 1 recebe 10
+var sandMask = sumSand.gte(1).rename('sand-mask');
+
+// Visualização
+Map.addLayer(sandMask, {min:0, max:1, palette:['ffffff','ff0000']}, 'Máscara Areia');
+
+    
+  // Especificando a pasta onde os assets serão armazenados
+  var output = 'projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/MB_2024_SANDMASK';
+  
+  // Exportando a imagem para o Google Earth Engine Assets
+  Export.image.toAsset({
+      image: sandMask,
+      description:'sandMask-allserie',
+      assetId: output,
+      pyramidingPolicy: 'mode',
+      // dimensions:,
+      region: geometry,
+      scale: 30,
+      // crs:,
+      // crsTransform:,
+      maxPixels: 1e11,
+      // shardSize:
+  });
