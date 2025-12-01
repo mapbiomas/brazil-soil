@@ -1,0 +1,503 @@
+/******************************************************************************
+ * MapBiomas Solo — Covariáveis ambientais — módulo de acesso (estáticas e dinâmicas)
+ * ----------------------------------------------------------------------------
+ * Objetivo
+ *   - Disponibilizar covariáveis ambientais para análise e modelagem de atributos de solo.
+ *   - Estrutura modular que permite acesso uniforme a covariáveis estáticas e dinâmicas
+ *     por meio da função require(), garantindo consistência entre diferentes scripts.
+ * Saída
+ *   - Objeto de retorno contendo funções: static_covariates() e dynamic_covariates()
+ * Bandas exportadas (ordem fixa ou derivada)
+ *   - Covariáveis estáticas: geomorfometria, classes de solo WRB, black soil, clima, bioma,
+ *     fitofisionomia, províncias estruturais, recorrência hídrica e profundidade alvo (cm).
+ *   - Covariáveis dinâmicas: variáveis temporais (clima, índices de vegetação, entre outras),
+ *     atualizadas conforme o período de análise.
+ *   - tipo: misto (int16/float32); domínio: contínuo ou categórico conforme variável.
+ * Regras de inclusão
+ *   - Agrupamento de variáveis por natureza temporal (estáticas × dinâmicas).
+ *   - Integração modular via require() a partir do repositório de scripts MapBiomas Solo.
+ *   - Compatibilidade com o ambiente Google Earth Engine para execução e manipulação dos dados.
+ * Autoria
+ *   - MapBiomas Solo — contato@mapbiomas.org
+ *   - Versão: 2025-10-23 Taciara
+ *   - Versão: 2025-11-16 Taciara (inclusao de novas covariáveis de ocorrencia simultanea)
+ ******************************************************************************/
+// --- --- --- --- --- COVARIÁVEIS AMBIENTAIS EXPLÍCITAS
+
+
+// // --- COVARIÁVEIS ESTÁTICAS
+exports.static_covariates = function(){
+  
+// preencher mascaras de predições anteriores
+/// CORRIGIR PARA COLEÇÃO 10
+
+var lulc = ee.Image('projects/mapbiomas-public/assets/brazil/lulc/collection10/mapbiomas_brazil_collection10_integration_v2')
+  .select('classification_2024');
+var mask29 = lulc.eq(29);
+
+function fillMasked(img, name) {
+  var m0 = img.mask();
+  var v0 = img;
+  var filledValues = ee.Image(0)
+                      .updateMask(mask29)
+                      .updateMask(m0.not());
+  var combined = v0.unmask().where(m0.not().and(mask29), 0);
+  var finalMask = m0.or(mask29);
+  return combined.updateMask(finalMask).rename(name);
+}
+
+
+var areia0_30 = ee.Image('projects/mapbiomas-workspace/SOLOS/PRODUTOS_C02/c02v2/mapbiomas_soil_collection2_v2_sand')
+  .select('sand_000_030cm');
+var silte0_30 = ee.Image('projects/mapbiomas-workspace/SOLOS/PRODUTOS_C02/c02v2/mapbiomas_soil_collection2_v2_silt')
+  .select('silt_000_030cm');
+var argila0_30 = ee.Image('projects/mapbiomas-workspace/SOLOS/PRODUTOS_C02/c02v2/mapbiomas_soil_collection2_v2_clay')
+  .select('clay_000_030cm');
+var textura_l1_30 = ee.Image('projects/mapbiomas-workspace/SOLOS/PRODUTOS_C02/c02v2/mapbiomas_soil_collection2_l1_grupamentos_texturais_v2')
+  .select('l1_0_30cm');
+
+var areia_fill   = fillMasked(areia0_30,   'sand_000_030cm');
+var silte_fill   = fillMasked(silte0_30,   'silt_000_030cm');
+var argila_fill  = fillMasked(argila0_30,  'clay_000_030cm');
+var textura_fill = fillMasked(textura_l1_30, 'textura_l1_030cm');
+
+    var prev_predictions = ee.Image([])
+  .addBands(areia_fill)
+  .addBands(silte_fill)
+  .addBands(argila_fill)
+  .addBands(textura_fill);
+
+
+    // Soil WRB (Hengl et al., 2017)
+    var soil_classes = [
+        'Ferralsols',
+        'Histosols',
+        'Nitisols',
+        'Vertisols',
+        'Plinthosols'
+    ];
+
+// --- CLASSES DE SOLO WRB (Hengl et al., 2017) ---
+// Cada banda representa a probabilidade de ocorrência da classe.
+// Os grupos abaixo agregam conjuntos de classes similares,
+// e a banda final será a soma das probabilidades das classes do grupo.
+
+    var sandysols_classes = [
+        'Arenosols',
+        'Podzols',
+      ];
+    
+    var humisols_classes = [
+        'Chernozems',
+        'Kastanozems',
+        'Phaeozems',
+        'Umbrisols',
+      ];
+    
+    var thinsols_classes = [
+        'Leptosols',
+        'Regosols',
+      ];
+    
+    var wetsols_classes = [
+        'Gleysols',
+        'Planosols',
+        'Stagnosols'
+      ];
+      
+    //Group based on top soil texture
+    var argisols_classes = [
+        'Alisols',
+        'Luvisols',
+        'Acrisols',
+        'Lixisols',
+        'Planosols'
+    ];
+
+    
+// WRB soil class
+    var soil = ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/WRB_ALL_SOILS_SOILGRIDS_30M_GAPFILL').select(soil_classes)
+    .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/WRB_ALL_SOILS_SOILGRIDS_30M_GAPFILL').select(sandysols_classes).reduce('sum').rename('Sandysols'))
+    .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/WRB_ALL_SOILS_SOILGRIDS_30M_GAPFILL').select(humisols_classes).reduce('sum').rename('Humisols'))
+    .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/WRB_ALL_SOILS_SOILGRIDS_30M_GAPFILL').select(thinsols_classes).reduce('sum').rename('Thinsols'))
+    .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/WRB_ALL_SOILS_SOILGRIDS_30M_GAPFILL').select(argisols_classes).reduce('sum').rename('Argisols'))
+    .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/WRB_ALL_SOILS_SOILGRIDS_30M_GAPFILL').select(wetsols_classes).reduce('sum').rename('Wetsols'))
+    .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/FAO_2022_BLACKSOIL_1KM').rename('black_soil_prob'));        
+
+
+var sibcs_classes = [
+  'PLANOSSOLO', 'CHERNOSSOLO', 'LATOSSOLO', 'PLINTOSSOLO',
+  'GLEISSOLO', 'VERTISSOLO', 'LUVISSOLO', 'NITOSSOLO',
+  'ESPODOSSOLO', 'ARGISSOLO', 'ORGANOSSOLO', 'CAMBISSOLO',
+  'NEOSSOLO_FLUVICO', 'NEOSSOLO_QUARTZARENICO', 'NEOSSOLO_REGOLITICO',
+  'NEOSSOLO_LITOLICO'
+];
+
+// Subgrupos
+var sibcs_rasos = ['NEOSSOLO_REGOLITICO','NEOSSOLO_LITOLICO', 'CAMBISSOLO'];
+var sibcs_neossolo = ['NEOSSOLO_REGOLITICO','NEOSSOLO_LITOLICO'];
+var sibcs_btextural = ['PLANOSSOLO', 'PLINTOSSOLO', 'ARGISSOLO', 'LUVISSOLO'];
+var sibcs_esqueleto = ['PLINTOSSOLO', 'CAMBISSOLO', 'NEOSSOLO_FLUVICO'];
+var sibcs_homogeneo = ['NEOSSOLO_QUARTZARENICO', 'GLEISSOLO'];
+var sibcs_argiloso = ['LATOSSOLO', 'NITOSSOLO'];
+
+
+// Pedologia IBGE (18 classes - sem água)
+var soil_sibcs_raw = ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/IBGE_2023_PEDOLOGIA_250MIL_2025').select(sibcs_classes);
+//var maskOriginal = soil_sibcs_raw.mask().reduce(ee.Reducer.min());  // preencher nodata
+
+var soil_sibcs_filled = soil_sibcs_raw.unmask(0);
+// Banda principal: todas as classes originais
+var banda_sibcs = soil_sibcs_filled .select(sibcs_classes);
+
+// Subgrupos (redução → presença de qualquer classe → 1/0)
+var banda_rasos = soil_sibcs_filled.select(sibcs_rasos).reduce(ee.Reducer.sum()).gt(0).rename('sibcs_rasos');
+var banda_neossolo = soil_sibcs_filled.select(sibcs_neossolo).reduce(ee.Reducer.sum()).gt(0).rename('sibcs_neossolo');
+var banda_btextural = soil_sibcs_filled.select(sibcs_btextural).reduce(ee.Reducer.sum()).gt(0).rename('sibcs_btextural');
+var banda_esqueleto = soil_sibcs_filled.select(sibcs_esqueleto).reduce(ee.Reducer.sum()).gt(0).rename('sibcs_esqueleto');
+var banda_homogeneo = soil_sibcs_filled.select(sibcs_homogeneo).reduce(ee.Reducer.sum()).gt(0).rename('sibcs_homogeneo');
+var banda_argiloso = soil_sibcs_filled.select(sibcs_argiloso).reduce(ee.Reducer.sum()).gt(0).rename('sibcs_argiloso');
+
+
+var subprovinces = ee.Image(
+  'projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/IBGE_PROVINCIAIS_ESTRUTURAIS_250mil_2025_tmp/subprovincias_prob'
+);
+
+// subprovincias prob
+// 0 = ausencia; 1 = presença provavel; 2 = presença certa
+var sedimentos = ['Sedimentos_Subprovincia'];
+
+var sedimentares = ['Sedimentares_Subprovincia'];
+var sedimentares_prob = ['Sedimentares_Subprovincia', 'Sedimentares_Subprovincia_prob'];
+
+var vulcanicas = ['Vulcanicas_Subprovincia'];
+var vulcanicas_prob = ['Vulcanicas_Subprovincia', 'Vulcanicas_Subprovincia_prob'];
+
+var plutonicas = ['Plutonicas_Subprovincia'];
+var plutonicas_prob = ['Plutonicas_Subprovincia', 'Plutonicas_Subprovincia_prob'];
+
+var metamorficas = ['Metamorficas_Subprovincia'];
+var metamorficas_prob = ['Metamorficas_Subprovincia', 'Metamorficas_Subprovincia_prob'];
+
+var banda_sedimentos = subprovinces.select(sedimentos).reduce(ee.Reducer.sum()).gt(0).rename('sedimentos');
+
+var banda_sedimentares = subprovinces.select(sedimentares).rename('sedimentares');
+var banda_sedimentares_prob = subprovinces.select(sedimentares_prob).reduce(ee.Reducer.sum()).rename('sedimentares_prob');
+
+var banda_vulcanicas = subprovinces.select(vulcanicas).rename('vulcanicas');
+var banda_vulcanicas_prob = subprovinces.select(vulcanicas_prob).reduce(ee.Reducer.sum()).rename('vulcanicas_prob');
+
+var banda_plutonicas = subprovinces.select(plutonicas).rename('plutonicas');
+var banda_plutonicas_prob = subprovinces.select(plutonicas_prob).reduce(ee.Reducer.sum()).rename('plutonicas_prob');
+
+var banda_metamorficas = subprovinces.select(metamorficas).rename('metamorficas');
+var banda_metamorficas_prob = subprovinces.select(metamorficas_prob).reduce(ee.Reducer.sum()).rename('metamorficas_prob');
+
+///////
+
+// Gerar combinações de Classe de Solo e Bioma
+var biome = ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/IBGE_2019_BIOMAS_ZC_250MIL');
+
+var pantanal = biome.select('Pantanal');
+var caatinga = biome.select('Caatinga');
+var pampa = biome.select('Pampa');
+var mata_atlantica = biome.select('Mata_Atlantica');
+var amazonia = biome.select('Amazonia');
+var cerrado = biome.select('Cerrado');
+
+
+var plintossolo = soil_sibcs_filled.select('PLINTOSSOLO');
+var planossolo = soil_sibcs_filled.select('PLANOSSOLO');
+var gleissolo = soil_sibcs_filled.select('GLEISSOLO');
+var neossolo_quartzarenico = soil_sibcs_filled.select('NEOSSOLO_QUARTZARENICO');
+var argissolo = soil_sibcs_filled.select('ARGISSOLO');
+
+// PANTANAL 
+var banda_pantanal_plintossolo =
+    pantanal.multiply(plintossolo)
+            .rename('pantanal_plintossolo');
+
+// pantanal ∧ neossolo_quartzarenico
+var banda_pantanal_neossolo_quartzarenico =
+    pantanal.multiply(neossolo_quartzarenico)
+            .rename('pantanal_neossolo_quartzarenico');
+
+// pantanal ∧ gleissolo
+var banda_pantanal_gleissolo =
+    pantanal.multiply(gleissolo)
+            .rename('pantanal_gleissolo');
+
+// pantanal ∧ planossolo
+var banda_pantanal_planossolo =
+    pantanal.multiply(planossolo)
+            .rename('pantanal_planossolo');
+
+    
+// CAATINGA
+var latossolo = soil_sibcs_filled.select('LATOSSOLO');
+
+var banda_caatinga_latossolo =
+    caatinga.multiply(latossolo)
+            .rename('caatinga_latossolo');
+  
+    
+// Gerar combinações de Classe de Solo e Provincia
+// ==========================================
+// LATOSSOLO × Subprovíncias
+// ==========================================
+
+var banda_latossolo_vulcanicas =
+    latossolo.multiply(banda_vulcanicas)
+             .rename('latossolo_vulcanicas');
+
+var banda_latossolo_sedimentares =
+    latossolo.multiply(banda_sedimentares)
+             .rename('latossolo_sedimentares');
+
+var banda_latossolo_sedimentos =
+    latossolo.multiply(banda_sedimentos)
+             .rename('latossolo_sedimentos');
+
+var banda_latossolo_metamorficas =
+    latossolo.multiply(banda_metamorficas)
+             .rename('latossolo_metamorficas');
+
+var banda_latossolo_plutonicas =
+    latossolo.multiply(banda_plutonicas)
+             .rename('latossolo_plutonicas');
+
+
+// ==========================================
+// ARGISSOLOS × Subprovíncias
+// ==========================================
+
+var banda_argissolo_metamorficas =
+    argissolo.multiply(banda_metamorficas)
+             .rename('argissolo_metamorficas');
+
+var banda_argissolo_sedimentares =
+    argissolo.multiply(banda_sedimentares)
+             .rename('argissolo_sedimentares');
+
+var banda_argissolo_sedimentos =
+    argissolo.multiply(banda_sedimentos)
+             .rename('argissolo_sedimentos');
+
+
+// ==========================================
+// RASOS × Subprovíncias
+// ==========================================
+
+var banda_raso_vulcanica =
+    banda_rasos.multiply(banda_vulcanicas)
+               .rename('raso_vulcanica');
+
+var banda_raso_sedimentar =
+    banda_rasos.multiply(banda_sedimentares)
+               .rename('raso_sedimentares');
+
+var banda_raso_metamorfica =
+    banda_rasos.multiply(banda_metamorficas)
+               .rename('raso_metamorfica');
+
+var banda_raso_plutonica =
+    banda_rasos.multiply(banda_plutonicas)
+               .rename('raso_plutonica');
+
+
+// ==========================================
+// SEDIMENTOS × BIOMAS
+// ==========================================
+
+var banda_pantanal_sedimentos =
+    pantanal.multiply(banda_sedimentos)
+            .rename('pantanal_sedimentos');
+
+var banda_amazonia_sedimentos =
+    amazonia.multiply(banda_sedimentos)
+            .rename('amazonia_sedimentos');
+
+var banda_cerrado_sedimentos =
+    cerrado.multiply(banda_sedimentos)
+           .rename('cerrado_sedimentos');
+
+var banda_pampa_sedimentos =
+    pampa.multiply(banda_sedimentos)
+         .rename('pampa_sedimentos');
+
+var banda_caatinga_sedimentos =
+    caatinga.multiply(banda_sedimentos)
+            .rename('caatinga_sedimentos');
+
+var banda_mata_atlantica_sedimentos =
+    mata_atlantica.multiply(banda_sedimentos)
+                  .rename('mata_atlantica_sedimentos');
+  
+///////////////
+//Land Surface Variables (Amatulli et al., 2020, 2018)
+    var slope = ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/OT_GEOMORPHOMETRY_90m').select('slope');
+    var slopecalc = slope.expression(
+        'tan(3.141593/180 * degrees)*100', {
+          'tan': slope.tan(),
+          'degrees': slope
+        }).round().rename('slope');
+ 
+    var curvatures = ee.Image([])     //15x15 window
+    .addBands(ee.Image('projects/ee-barbaracosta/assets/soc_mapping/brasil_curvaturas_15x15').select('b1').rename('cross_sectional').round())
+    .addBands(ee.Image('projects/ee-barbaracosta/assets/soc_mapping/brasil_curvaturas_15x15').select('b2').rename('longitudinal_curvature').round());
+    
+    var geomorphometry_covariates = ee.Image([])  //3x3 window
+      .addBands(ee.Image("MERIT/DEM/v1_0_3").select(['dem'],['elevation']).int16())
+      .addBands(slopecalc)
+      .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/OT_GEOMORPHOMETRY_90m').select('convergence').round())
+      .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/OT_GEOMORPHOMETRY_90m').select('cti').multiply(10).round())
+      .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/OT_GEOMORPHOMETRY_90m').select('eastness').multiply(100).round())
+      .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/OT_GEOMORPHOMETRY_90m').select('northness').multiply(100).round())
+      .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/OT_GEOMORPHOMETRY_90m').select('roughness').round())
+      .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/OT_GEOMORPHOMETRY_90m').select('spi').add(1).log10().multiply(100).round())
+      
+      .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/OT_GEOMORPHOMETRY_90m').select('elev_stdev').round())
+      .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/OT_GEOMORPHOMETRY_90m').select('dev_magnitude').round())
+      .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/OT_GEOMORPHOMETRY_90m').select('dev_scale').round());
+
+var provinces = ee.Image([])
+        .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/IBGE_PROVINCIAIS_ESTRUTURAIS_250mil_2025/IBGE_PROVINCIAS_250MIL_DUMMY'));
+
+var climate = ee.Image([])
+        .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/IPEF_2013_KOPPEN_100M_2025/koppen_l1'))
+        .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/IPEF_2013_KOPPEN_100M_2025/koppen_l2'))
+        .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/IPEF_2013_KOPPEN_100M_2025/koppen_l3'));
+  
+var distance = ee.Image([])
+        .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/DISTANCE_C10_v3/distance_afloramento_rochoso_c10_v3_fd7000_md7000').rename('Distance_to_rock_v33'))     
+        .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/DISTANCE_C10_v3/distance_praia_duna_areal_c10_v3_fd7000_md7000').rename('Distance_to_sand_v33'));
+        
+// MapBiomas Water (Collection 10) - static
+var water =  ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/MB_2024_C10_WATER/MB_2024_C10_STATIC_WATER_RECURRENCE_1985_2024').rename('Water_40y_recurrence');
+
+// Lat e Long
+var lonLat = ee.Image.pixelLonLat()
+    .select(['longitude', 'latitude'])
+    .round();
+
+///////////////////////////////////
+    //------ Static covariate union
+    var static_covariates = ee.Image([])
+        //Soil Classes WRB probabilities & Black Soil
+        .addBands(prev_predictions)
+        .addBands(soil)
+        .addBands(banda_sibcs)
+        .addBands(banda_rasos)
+        .addBands(banda_neossolo)
+        .addBands(banda_btextural)
+        .addBands(banda_esqueleto)
+        .addBands(banda_homogeneo)
+        .addBands(banda_argiloso)
+ 
+        //Structural provinces (IBGE, 2019c) // ordinais; 0 = ausencia; 1 = presença provavel; 2 = presença
+        .addBands(provinces)
+        .addBands(banda_sedimentos)
+        .addBands(banda_sedimentares_prob)
+        .addBands(banda_vulcanicas_prob)
+        .addBands(banda_plutonicas_prob)
+        .addBands(banda_metamorficas_prob)
+        
+        .addBands(banda_sedimentares)
+        .addBands(banda_vulcanicas)
+        .addBands(banda_plutonicas)
+        .addBands(banda_metamorficas)        
+        
+        
+        // Ocorrência conjunta de bioma e classe de solo // ordinais; 0 = ausencia; 1 = presença provavel; 2 = presença
+        .addBands(banda_pantanal_plintossolo)
+        .addBands(banda_pantanal_neossolo_quartzarenico)
+        .addBands(banda_pantanal_gleissolo)
+        .addBands(banda_pantanal_planossolo)
+        .addBands(banda_caatinga_latossolo)
+        
+        // Ocorrência conjunta de subprovincia e classe de solo    // ordinais; 0 = ausencia; 1 = presença provavel; 2 = presença     
+        .addBands(banda_latossolo_vulcanicas)
+        .addBands(banda_latossolo_sedimentares)
+        .addBands(banda_latossolo_sedimentos)
+        .addBands(banda_latossolo_metamorficas)
+        .addBands(banda_latossolo_plutonicas)
+        
+        // Ocorrência conjunta de subprovincia e classe de solo      // ordinais; 0 = ausencia; 1 = presença provavel; 2 = presença    
+        .addBands(banda_argissolo_metamorficas)
+        .addBands(banda_argissolo_sedimentares)
+        .addBands(banda_argissolo_sedimentos)
+        .addBands(banda_raso_vulcanica)
+        .addBands(banda_raso_sedimentar)
+        .addBands(banda_raso_plutonica)
+
+        // Ocorrência conjunta de sedimentos e bioma         // ordinais; 0 = ausencia; 1 = presença provavel; 2 = presença
+        .addBands(banda_pantanal_sedimentos)
+        .addBands(banda_amazonia_sedimentos)
+        .addBands(banda_cerrado_sedimentos)
+        .addBands(banda_pampa_sedimentos)
+        .addBands(banda_caatinga_sedimentos)
+        .addBands(banda_mata_atlantica_sedimentos)
+
+        //Land Surface Variables
+        .addBands(geomorphometry_covariates)
+        .addBands(curvatures)
+      
+        //Köppen climate classification
+        .addBands(climate)
+        
+        //Biome 
+        .addBands(biome)
+        
+        //Phytoecological regions (IBGE, 2023, 2012)
+        .addBands(ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/IBGE_2023_FITOFISIONOMIA_250MIL_2025'))
+        
+        //Distance to class
+        .addBands(distance) // afloramento rochoso e areiais, praias e dunas
+        
+        // MapBiomas Water (Collection 3) - static
+        .addBands(water)
+        
+        // Coordenadas
+        .addBands(lonLat)
+        
+    return static_covariates;
+  };
+
+//print(banda_sibcs)
+
+// var derivadas = {
+//   banda_sedimentos: banda_sedimentos,
+//   banda_sedimentares_prob: banda_sedimentares_prob,
+//   banda_vulcanicas_prob: banda_vulcanicas_prob,
+//   banda_plutonicas_prob: banda_plutonicas_prob,
+//   banda_metamorficas_prob: banda_metamorficas_prob,
+
+//   banda_pantanal_plintossolo: banda_pantanal_plintossolo,
+//   banda_pantanal_neossolo_quartzarenico: banda_pantanal_neossolo_quartzarenico,
+//   banda_pantanal_gleissolo: banda_pantanal_gleissolo,
+//   banda_pantanal_planossolo: banda_pantanal_planossolo,
+
+//   banda_latossolo_vulcanicas_prob: banda_latossolo_vulcanicas_prob,
+//   banda_latossolo_sedimentares_prob: banda_latossolo_sedimentares_prob,
+//   banda_latossolo_sedimentos: banda_latossolo_sedimentos,
+//   banda_latossolo_metamorfica_prob: banda_latossolo_metamorfica_prob,
+//   banda_latossolo_plutonicas_prob: banda_latossolo_plutonicas_prob,
+
+//   banda_argissolo_metamorficas_prob: banda_argissolo_metamorficas_prob,
+//   banda_argissolo_sedimentares_prob: banda_argissolo_sedimentares_prob,
+//   banda_argissolo_sedimentos: banda_argissolo_sedimentos,
+
+//   banda_raso_vulcanica: banda_raso_vulcanica,
+//   banda_raso_sedimentar: banda_raso_sedimentar,
+//   banda_raso_metamorfica: banda_raso_metamorfica,
+//   banda_raso_plutonica: banda_raso_plutonica
+// };
+
+// Object.keys(derivadas).forEach(function(nome){
+//   print('DEBUG derivada — ' + nome, derivadas[nome].bandNames());
+// });
+
+
+  // O acesso às covariáveis é feito por meio de uma requisão (função: "require"). Para uso desses dados, acesse ao repositório de scripts. 
+  // require('users/taciaraz/mapbiomas_solo:collection3/0_covariates/0_psd_covariate_source').static_covariates();
+  
