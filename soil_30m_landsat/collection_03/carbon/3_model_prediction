@@ -1,0 +1,757 @@
+/*  
+ * MAPBIOMAS SOIL
+ * @contact: contato@mapbiomas.org
+ * @date: November 26, 2025
+ */ 
+
+// SCRIPT 2: PREDICTING AND MAPPING SOIL ORGANIC CARBON STOCK
+
+var version_in = 'c03_soc_v2025_11_26_trep' 
+var seed = 2021;  // Semente para reprodutibilidade do modelo
+
+// -------------------------
+// 1. CARREGAR MATRIZ
+// -------------------------
+// Caminho da matriz de treinamento (todas as profundidades empilhadas)
+var matriz_path = 'projects/mapbiomas-workspace/SOLOS/AMOSTRAS/MATRIZES/collection3/' + version_in;
+var saida_collection = 'projects/mapbiomas-workspace/SOLOS/PRODUTOS_C03/soc/'; 
+var t_ha = 'SOC_t_ha'; 
+var kg_m2 = 'SOC_kg_m2'; 
+
+// Carrega todas as amostras empilhadas (todas as profundidades)
+var datatraining_all = ee.FeatureCollection(matriz_path);
+// print('Matriz completa (todas as profundidades):', datatraining_all.limit(10));
+// print('Numero de amostras', datatraining_all.size());
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+// Filter out pseudo-samples of rock outcrops that do not fall on rock outcrops
+// 1. Define the combined condition to DISCARD
+// Logic: PSEUDOROCK_index IS 1 AND afloramento IS 0
+var conditionToRemoveRock = ee.Filter.and(
+  ee.Filter.eq('PSEUDOROCK_index', 1),
+  ee.Filter.eq('afloramento', 0)
+);
+// 2. Apply the inverse (.not) to keep everything else
+var datatraining_filter_rock = datatraining_all.filter(conditionToRemoveRock.not());
+// 3. Verify the counts to see how many were removed: 1071
+// print('Removed Count:', datatraining_all.size().subtract(datatraining_filter_rock.size()));
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+// Filter out pseudo-samples of sands that do not fall on sands
+// 1. Define the combined condition to DISCARD
+// Logic: PSEUDORSAND_index IS 1 AND areia IS 0
+var conditionToRemoveSand = ee.Filter.and(
+  ee.Filter.eq('PSEUDOSAND_index', 1),
+  ee.Filter.eq('areia', 0)
+);
+// 2. Apply the inverse (.not) to keep everything else
+var datatraining_filter_sand = datatraining_filter_rock.filter(conditionToRemoveSand.not());
+// // 3. Verify the counts to see how many were removed: 273
+// print('Removed Count:', datatraining_filter_rock.size().subtract(datatraining_filter_sand.size()));
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+// Filter out pseudo-samples of rock outcrops that have high NDVI values
+// 1. Define the combined condition to DISCARD
+// Logic: PSEUDOROCK_index IS 1 AND mb_ndvi_median_decay IS > 147
+var conditionToRemoveNDVI = ee.Filter.and(
+  ee.Filter.eq('PSEUDOROCK_index', 1),
+  ee.Filter.gt('mb_ndvi_median_decay', 147)
+);
+// 2. Apply the inverse (.not) to keep everything else
+var datatraining_filter_ndvi = datatraining_filter_sand.filter(conditionToRemoveNDVI.not());
+// 3. Verify the counts to see how many were removed: 420
+// print('Removed Count:', datatraining_filter_sand.size().subtract(datatraining_filter_ndvi.size()));
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+// Filter out pseudo-samples of rock outcrops that have high black soil probability
+// 1. Define the combined condition to DISCARD
+// Logic: PSEUDOROCK_index IS 1 AND black_soil_prob IS > 10
+var conditionToRemoveBlack = ee.Filter.and(
+  ee.Filter.eq('PSEUDOROCK_index', 1),
+  ee.Filter.gt('black_soil_prob', 10)
+);
+// 2. Apply the inverse (.not) to keep everything else
+var datatraining_filter_black = datatraining_filter_ndvi.filter(conditionToRemoveBlack.not());
+// 3. Verify the counts to see how many were removed: 186
+// print('Removed Count:', datatraining_filter_ndvi.size().subtract(datatraining_filter_black.size()));
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+// Filter out pseudo-samples of rock outcrops that have clay content > 0
+// 1. Define the combined condition to DISCARD
+// Logic: PSEUDOROCK_index IS 1 AND argila_000_030cm IS > 0
+var conditionToRemoveClay = ee.Filter.and(
+  ee.Filter.eq('PSEUDOROCK_index', 1),
+  ee.Filter.gt('argila_000_030cm', 0)
+);
+// 2. Apply the inverse (.not) to keep everything else
+var datatraining_filter_clay = datatraining_filter_black.filter(conditionToRemoveClay.not());
+// 3. Verify the counts to see how many were removed: 45
+//print('Removed Count:', datatraining_filter_black.size().subtract(datatraining_filter_clay.size()));
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+// Filter out pseudo-samples of sand spots that have clay content > 0
+// 1. Define the combined condition to DISCARD
+// Logic: PSEUDOSAND_index IS 1 AND argila_000_030cm IS > 0
+var conditionToRemoveClaySand = ee.Filter.and(
+  ee.Filter.eq('PSEUDOSAND_index', 1),
+  ee.Filter.gt('argila_000_030cm', 0)
+);
+// 2. Apply the inverse (.not) to keep everything else
+var datatraining_filter_claysand = datatraining_filter_clay.filter(conditionToRemoveClaySand.not());
+// 3. Verify the counts to see how many were removed: 66
+// print('Removed Count:', datatraining_filter_clay.size().subtract(datatraining_filter_claysand.size()));
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+// Filter out pseudo-samples of sand spots that have high black soil probability
+// 1. Define the combined condition to DISCARD
+// Logic: PSEUDOSAND_index IS 1 AND black_soil_prob IS > 10
+var conditionToRemoveSandBlack = ee.Filter.and(
+  ee.Filter.eq('PSEUDOSAND_index', 1),
+  ee.Filter.gt('black_soil_prob', 10)
+);
+// 2. Apply the inverse (.not) to keep everything else
+var datatraining_filter_sandblack = datatraining_filter_claysand.filter(conditionToRemoveSandBlack.not());
+// 3. Verify the counts to see how many were removed: 462
+// print('Removed Count:', datatraining_filter_claysand.size().subtract(datatraining_filter_sandblack.size()));
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+// Filter out pseudo-samples of sand spots that have high wetsols probability
+// 1. Define the combined condition to DISCARD
+// Logic: PSEUDOSAND_index IS 1 AND Wetsols IS > 10
+var conditionToRemoveSandWet = ee.Filter.and(
+  ee.Filter.eq('PSEUDOSAND_index', 1),
+  ee.Filter.gt('Wetsols', 10)
+);
+// 2. Apply the inverse (.not) to keep everything else
+var datatraining_filter_sandwet = datatraining_filter_sandblack.filter(conditionToRemoveSandWet.not());
+// 3. Verify the counts to see how many were removed: 279
+// print('Removed Count:', datatraining_filter_sandblack.size().subtract(datatraining_filter_sandwet.size()));
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+// Filter out samples from IFN that are on 'resingas'
+// 1. Define the combined condition to DISCARD
+// Logic: IFN_index IS 1 AND restingas IS > 0
+var conditionToRemoveIFNrestinga = ee.Filter.and(
+  ee.Filter.eq('IFN_index', 1),
+  ee.Filter.gt('resingas', 0)
+);
+// 2. Apply the inverse (.not) to keep everything else
+var datatraining_filter_ifnrestinga = datatraining_filter_sandwet.filter(conditionToRemoveIFNrestinga.not());
+// 3. Verify the counts to see how many were removed: 
+// print('Removed Count:', datatraining_filter_sandwet.size().subtract(datatraining_filter_ifnrestinga.size()));
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+// Filter out samples with YEAR_index == -26 and restigas > 0
+var conditionToRemoveYEARrestinga = ee.Filter.and(
+  ee.Filter.eq('YEAR_index', -26),
+  ee.Filter.gt('resingas', 0)
+);
+// 2. Apply the inverse (.not) to keep everything else
+var datatraining_filter_yearrestinga = datatraining_filter_ifnrestinga.filter(conditionToRemoveYEARrestinga.not());
+// 3. Verify the counts to see how many were removed: 
+//print('Removed Count:', datatraining_filter_ifnrestinga.size().subtract(datatraining_filter_yearrestinga.size()));
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+// Filter out samples with black_soil_prob > 10 and areia > 0
+var conditionToRemoveBlackSand = ee.Filter.and(
+  ee.Filter.gt('black_soil_prob', 10),
+  ee.Filter.gt('areia', 0)
+);
+// 2. Apply the inverse (.not) to keep everything else
+var datatraining_filter_blacksand = datatraining_filter_yearrestinga.filter(conditionToRemoveBlackSand.not());
+// 3. Verify the counts to see how many were removed: 
+//print('Removed Count:', datatraining_filter_yearrestinga.size().subtract(datatraining_filter_blacksand.size()));
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+// Filter out samples with black_soil_prob > 10 and areia_000_030cm > 70
+var conditionToRemoveBlackSandy = ee.Filter.and(
+  ee.Filter.gt('black_soil_prob', 10),
+  ee.Filter.gt('areia_000_030cm', 70)
+);
+// 2. Apply the inverse (.not) to keep everything else
+var datatraining_filter_blacksandy = datatraining_filter_blacksand.filter(conditionToRemoveBlackSandy.not());
+// 3. Verify the counts to see how many were removed: 
+//print('Removed Count:', datatraining_filter_blacksand.size().subtract(datatraining_filter_blacksandy.size()));
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+// Filter out samples with PSEUDOSAND_index == 0 and PSEUDOROCK_index == 0 and
+// mb_evi2_median_decay < 100 and Water_40y_recurrence > 0
+var conditionToRemoveWater = ee.Filter.and(
+  ee.Filter.eq('PSEUDOSAND_index', 0),
+  ee.Filter.eq('PSEUDOROCK_index', 0),
+  ee.Filter.lt('mb_evi2_median_decay', 100),
+  ee.Filter.gt('Water_40y_recurrence', 0)
+);
+// 2. Apply the inverse (.not) to keep everything else
+var datatraining_filter_water = datatraining_filter_blacksandy.filter(conditionToRemoveWater.not());
+// 3. Verify the counts to see how many were removed: 
+// print('Removed Count:', datatraining_filter_blacksandy.size().subtract(datatraining_filter_water.size()));
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+var datatraining = datatraining_filter_water;
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+// ======================================================
+var lulc = ee.Image('projects/mapbiomas-public/assets/brazil/lulc/collection10/mapbiomas_brazil_collection10_integration_v2');
+var col3_texture = ee.Image('projects/mapbiomas-workspace/SOLOS/PRODUTOS_C03/mapbiomas_soil_collection3_textural_group');
+var sand_mask = ee.Image('projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/MB_2024_SANDMASK');
+// ======================================================
+
+// -------------------------
+// 2. DEFINIR TARGETS
+// -------------------------
+// Variáveis alvo (respostas) que queremos modelar
+var targets = [
+  'carbono_gm2',
+  'carbono_gm2_qmap',
+];
+
+// -------------------------
+// 3. DEFINIR AS COVARIÁVEIS DE TREINO
+// -------------------------
+// todas as propriedades disponíveis no FeatureCollection de treino
+var allProps = ee.Feature(datatraining.first()).propertyNames();
+// print('Todas as propriedades disponíveis na matriz:', allProps);
+
+// ATENÇÃO: ESTE TRECHO MUDOU:
+// Lista de covariáveis para MANTER no código
+
+var covariates_names_static  = [
+  // profundidade alvo
+  'profundidade',
+  
+  // Indicadores
+  'IFN_index',
+  'YEAR_index',
+  'PSEUDOROCK_index',
+  'PSEUDOSAND_index',
+ 
+  // predição da coleção atual
+  'areia_000_030cm',
+  'silte_000_030cm',
+  'argila_000_030cm',
+  
+  // classes de solo WRB (probabilidade)
+  // probabilidades unicas
+  'Ferralsols', 'Histosols', 'Nitisols', 'Vertisols', 'Plinthosols', 
+  // probabilidades agregadas
+  'Humisols', 'Sandysols', 'Thinsols', 'Wetsols',
+
+  // Pedologia IBGE
+  'PLANOSSOLO', 'CHERNOSSOLO', 'LATOSSOLO', 'PLINTOSSOLO',
+  'GLEISSOLO',
+  'LUVISSOLO', 'NITOSSOLO',
+  'ESPODOSSOLO', 'ARGISSOLO', 'ORGANOSSOLO', 'CAMBISSOLO',
+  'NEOSSOLO_FLUVICO', 'NEOSSOLO_QUARTZARENICO',
+  'NEOSSOLO_LITOLICO',
+    
+  'sibcs_rasos',
+  'sibcs_btextural', 
+  'sibcs_esqueleto', 
+  'sibcs_homogeneo',
+  'sibcs_argiloso',
+
+  // black soils
+  'black_soil_prob',
+
+  // morfometria / relevo
+  'slope',
+  'convergence',
+  'cti',
+  'eastness',
+  'northness',
+  'spi',
+  'dev_magnitude',
+  'dev_scale',
+  'cross_sectional',
+  'longitudinal_curvature',
+
+  // altitude
+  'elevation',
+
+  // clima Köppen
+  'koppen_l1_A',
+  'koppen_l2_Af',
+  'koppen_l2_Am',
+  'koppen_l2_As',
+  'koppen_l2_Aw',
+
+  'koppen_l3_Bsh',
+
+  'koppen_l1_C',
+  'koppen_l2_Cf',
+  'koppen_l3_Cfa',
+  'koppen_l3_Cfb',
+
+  'koppen_l2_Cw',
+  'koppen_l3_Cwa',
+  'koppen_l3_Cwb',
+
+  // biomas IBGE
+  'Amazonia',
+  'Caatinga',
+  'Cerrado',
+  'Mata_Atlantica',
+  'Pampa',
+  'Pantanal',
+  'Zona_Costeira',
+
+  // fitofisionomias IBGE
+  'Campinarana',
+  'Estepe',
+  'Floresta_Estacional_Decidual',
+  'Floresta_Estacional_Semidecidual',
+  'Floresta_Estacional_Sempre_Verde', 
+  'Floresta_Ombrofila_Aberta',
+  'Floresta_Ombrofila_Densa',
+  'Floresta_Ombrofila_Mista',
+  'Formacao_Pioneira',
+  'Savana',
+  'Savana_Estepica',
+
+  // províncias estruturais (IBGE)
+  'Amazonas_Solimoes_Provincia',
+  'Amazonia_Provincia',
+  'Borborema_Provincia',
+  'Cobertura_Cenozoica_Provincia',
+  'Costeira_Margem_Continental_Provincia',
+  'Mantiqueira_Provincia',
+  'Parecis_Provincia',
+  'Parnaiba_Provincia',
+  'Reconcavo_Tucano_Jatoba_Provincia',
+  'Sao_Francisco_Provincia',
+  'Tocantis_Provincia',
+
+  // subprovíncias (litologia)
+  'sedimentos',
+  'sedimentares',
+  'vulcanicas',
+  'metamorficas',
+  
+  // ocorrência conjunta de bioma e solo
+  'pantanal_plintossolo',
+  'pantanal_neossolo_quartzarenico',
+  'pantanal_gleissolo',
+  'pantanal_planossolo',
+  
+  'caatinga_latossolo',
+
+  // ocorrência conjunta de solo e litologia
+  'latossolo_vulcanicas',
+  'latossolo_sedimentares',
+  'latossolo_sedimentos',
+  
+  'argissolo_metamorficas',
+  'argissolo_sedimentares',
+  'argissolo_sedimentos',
+  
+  'raso_vulcanica',
+  'raso_sedimentares',
+
+  // ocorrência conjunta de bioma e litologia
+  'pantanal_sedimentos',
+  'amazonia_sedimentos',
+  'cerrado_sedimentos',
+  'caatinga_sedimentos',
+  'mata_atlantica_sedimentos',
+  
+  // Distâncias Euclidianas
+  'Distance_to_sand_v33', 
+  'Distance_to_rock_v33', 
+
+  
+  // estabilidade de LULC
+  'Area_Estavel'
+]
+
+var covariates_names_dynamic  = [
+  // List of covariates for available dynamic covariates
+  
+  // GT vegetation indices
+  // Mapbiomas vegetation indices 
+  'mb_ndvi_median_decay',
+  'mb_evi2_median_decay',
+    
+  // MapBiomas - Col.10
+  'formacaoFlorestal',
+  'outrasFormacoesFlorestais',
+  'formacaoCampestre',
+  'formacaoSavanica',
+  'campoAlagadoAreaPantanosa',
+  'restingas',
+  'afloramento',
+  'vegNatural',
+  'lavouras',
+  'pastagem',
+  'silvicultura',
+  'mosaicoDeUsos',
+  'agropecuaria',
+  'areia',
+];
+
+
+// ======================================================
+// 1) ACESSAR O SCRIPT 0_covariate_source
+// ======================================================
+var covariatesModule = require('users/taciaraz/mapbiomas_solo:collection3/carbon/0_covariate_source');
+
+// 2) Imagens de covariáveis
+var static_image  = covariatesModule.static_covariates();
+var dynamic_images = covariatesModule.dynamic_covariates();
+
+
+// 1) CRIAR covariáveis constantes de apoio
+var profundidade_img    = ee.Image.constant(30).int16().rename('profundidade');
+var IFN_index_img     = ee.Image.constant(0).int16().rename('IFN_index');
+var YEAR_index_img    = ee.Image.constant(0).int16().rename('YEAR_index');
+var PSEUDOROCK_index_img    = ee.Image.constant(0).int16().rename('PSEUDOROCK_index');
+var PSEUDOSAND_index_img    = ee.Image.constant(0).int16().rename('PSEUDOSAND_index');
+
+var constant_indices = ee.Image.cat([
+  profundidade_img,
+  IFN_index_img,
+  YEAR_index_img,
+  PSEUDOROCK_index_img,
+  PSEUDOSAND_index_img
+]);
+
+var staticCovariates = static_image.addBands(constant_indices);
+
+var staticNames  = staticCovariates.bandNames();
+var dynamicNames = dynamic_images.first().bandNames();
+
+
+// ======================================================
+// INTERSEÇÃO MATRIZ X LISTAS DESEJADAS
+// ======================================================
+
+var cols = datatraining.first().propertyNames();
+
+var selectedStatic  = staticNames
+  .filter( ee.Filter.inList('item', covariates_names_static) )
+  .filter( ee.Filter.inList('item', cols) );
+
+var selectedDynamic = dynamicNames
+  .filter( ee.Filter.inList('item', covariates_names_dynamic) )
+  .filter( ee.Filter.inList('item', cols) );
+
+var selectedCovariates = selectedStatic.cat(selectedDynamic);
+
+// verificação final de usadas e removidas
+// Itens realmente usados
+var propsUsed = selectedCovariates.sort();
+
+// Itens no treino mas não selecionados
+var propsRemoved = cols.removeAll(propsUsed).sort();
+
+// Itens desejados que NÃO existem na matriz
+var propsMissing = ee.List(covariates_names_static)
+  .cat(ee.List(covariates_names_dynamic))
+  .removeAll(cols)
+  .sort();
+
+// print('COVARIÁVEIS USADAS:', propsUsed);
+// print('REMOVIDAS (presentes mas não usadas):', propsRemoved);
+// print('DESEJADAS MAS AUSENTES:', propsMissing);
+
+// print(selectedCovariates)
+// ======================================================
+// DEFINIÇÃO FINAL DO DATASET DE TREINO SOC
+// ======================================================
+
+var trainingFinal = datatraining.select(propsUsed);
+// print('Dataset final SOC (treino):', trainingFinal.first());
+
+// ---------------------------------------------------------------------------
+// RANDOM FOREST MODEL TRAINING
+// ---------------------------------------------------------------------------
+
+// Define the target property for prediction (soil organic carbon in t/ha)
+
+
+// --- RANDOM FOREST PARAMETERS // defined local 21/06/25
+var rf_params = {
+  ntree: 300,
+  mtry: 24,
+  nodesize: 2,
+  sampsize: 0.632,
+  maxNodes: 40,
+  seed: 2021
+};
+
+// Modelo final – carbono_gm2_qmap
+var rf_carbono_gm2_qmap = ee.Classifier
+  .smileRandomForest({
+    numberOfTrees: rf_params.ntree,
+    variablesPerSplit: rf_params.mtry,
+    minLeafPopulation: rf_params.nodesize,
+    bagFraction: rf_params.sampsize,
+    maxNodes: rf_params.maxNodes,
+    seed: rf_params.seed
+  })
+  .setOutputMode('REGRESSION')
+  .train({
+    features: datatraining,
+    classProperty: 'carbono_gm2_qmap',
+    inputProperties: selectedCovariates
+  });
+
+// print('RF carbono_gm2_qmap:', rf_carbono_gm2_qmap);
+// // print(rf_carbono_gm2_qmap.explain());
+
+
+// ---------------------------------------------------------------------------
+// SPATIO TEMPORAL PREDICTION (1985–2024)
+// ---------------------------------------------------------------------------
+// Predicts SOC (t/ha) annually using a trained Random Forest model,
+// combining static and dynamic covariates.
+// Applies masking to water and anthropogenic water areas,
+// rounds predictions and stores results in a multiband image.
+// ---------------------------------------------------------------------------
+
+// Define the range of years for temporal prediction
+var years = [
+  1985, 1986, 1987, 1988, 1989,
+  1990, 1991, 1992, 1993, 1994,
+  1995, 1996, 1997, 1998, 1999,
+  2000, 2001, 2002, 2003, 2004,
+  2005, 2006, 2007, 2008, 2009,
+  2010, 2011, 2012, 2013, 2014,
+  2015, 2016, 2017, 2018, 2019,
+  2020, 2021, 2022, 2023, 2024,
+];
+
+// Initialize empty image and feature collection for outputs
+// var recipe_carbon   = ee.Image().select([]);   // carbono_gm2
+var prev_recipe_qmap   = ee.Image().select([]);   // carbono_gm2_qmap
+
+
+years.forEach(function(year) {
+  // 1. Covariáveis dinâmicas do ano
+  var dynamic_covariates_year = dynamic_images
+    .filter(ee.Filter.eq('year', year))
+    .first();
+
+  // 2. Empilha covariáveis (estáticas + dinâmicas + ano)
+  var covariates = ee.Image().select([])
+    .addBands(staticCovariates)
+    .addBands(dynamic_covariates_year)
+    .addBands(ee.Image(year).int16().rename('year'));
+
+  // 3. Nome da banda de saída (mesmo nome nos dois modelos)
+  var bandname = 'prediction_' + year;
+
+/// original inicio
+var lulc_year = lulc.select('classification_' + year);
+var texture = col3_texture.select('textural_group_000_030cm');
+
+
+ var sand_hist_raw = sand_mask
+  .selfMask()            // mantém só onde é 1 (já foi areia)
+  .multiply(1000)        // valor bruto que vira 10 depois
+  .rename(bandname);
+
+  var blend = ee.Image()
+    // .blend(lulc_year.eq(29).selfMask()) // Rocky outcrop
+    .blend(lulc_year.eq(23).selfMask()) // Dunes, Sands and Beaches
+    .blend(lulc_year.eq(24).selfMask()) // Urban Infrastructure
+    .blend(lulc_year.eq(30).selfMask()) // Minning
+    .blend(texture.eq(1).selfMask()) // texture
+    .multiply(0); // valor 0 nas áreas mascaradas
+// original fim
+
+  // Predição – modelo recipe_qmap
+  var pred_recipe_qmape = covariates
+    .classify(rf_carbono_gm2_qmap)
+    .rename(bandname)
+    .blend(sand_hist_raw)
+    .blend(blend)
+    .divide(100)
+    .round()
+    .int16(); 
+    
+    prev_recipe_qmap = prev_recipe_qmap.addBands(pred_recipe_qmape);
+// print(recipe_qmap, 'recipe_qmap')
+});
+
+
+// -----------------------------------------------------------
+// FILTRO DE LULC ESTÁVEL (1985–1989) + MEDIANA DO CARBONO
+// Corrige apenas: prediction_1985, prediction_1986, prediction_1987
+// Série original: prev_recipe_qmap
+// Série final corrigida: recipe_qmap
+// -----------------------------------------------------------
+
+var first5 = [1985, 1986, 1987, 1988, 1989];
+var first3 = [1985, 1986, 1987];
+
+// 1. Empilhar LULC dos 5 primeiros anos
+var lulc5 = ee.Image.cat(
+  first5.map(function(y) {
+    return lulc.select('classification_' + y);
+  })
+);
+
+// 2. Verificar estabilidade: stdDev == 0
+var lulcStable = lulc5
+  .reduce(ee.Reducer.stdDev())
+  .eq(0)
+  .selfMask()
+  .round()
+  .int16();
+
+// 3. Empilhar carbono dos 5 anos (prediction_YYYY)
+var soc5 = ee.Image.cat(
+  first5.map(function(y) {
+    return prev_recipe_qmap.select('prediction_' + y);
+  })
+);
+
+// 4. Mediana dos 5 anos de carbono
+var socMedian = soc5.reduce(ee.Reducer.median()).round();
+
+// 5. Corrigir apenas os 3 primeiros anos da série
+var correctedBands = first3.map(function(y) {
+  var original = prev_recipe_qmap.select('prediction_' + y);
+  var corrected = original.where(lulcStable, socMedian);
+  return corrected.rename('prediction_' + y);
+});
+
+// 6. Concatenar bandas corrigidas com o restante
+var correctedNames = correctedBands.map(function(img) {
+  return ee.Image(img).bandNames().get(0);
+});
+
+var untouched = prev_recipe_qmap.select(
+  prev_recipe_qmap.bandNames().filter(
+    ee.Filter.inList('item', correctedNames).not()
+  )
+);
+
+
+// Constrói a série final com o nome original
+var recipe_qmap = ee.Image.cat(correctedBands).addBands(untouched);
+
+// Reordenar bandas na sequência temporal correta
+var recipe_qmap = recipe_qmap.select(recipe_qmap.bandNames().sort());
+
+// ---------------------------------------------------------------------------
+// FINAL OUTPUT: SPATIO-TEMPORAL SOC STOCK SERIES (1985–2024)
+// ---------------------------------------------------------------------------
+var soc_qmap_t_ha  = recipe_qmap.multiply(1);
+
+
+var biomas = ee.FeatureCollection('projects/mapbiomas-workspace/AUXILIAR/biomas_IBGE_250mil');
+var aoi = biomas;
+
+// Máscara do Brasil (imagem, não geometria)
+var aoi_mask = ee.Image().paint(aoi, 1).selfMask();
+
+// Bounds somente para o export
+var aoi_bounds = aoi.geometry().bounds();
+
+// 3. Aplicar a máscara corretamente
+var soc_qmap_t_ha_masked = soc_qmap_t_ha.updateMask(aoi_mask);
+
+// // ---------------------------------------------------------------------------
+// EXPORT FINAL SOC TIME SERIES IMAGE TO ASSET
+// ---------------------------------------------------------------------------
+Export.image.toAsset({
+  image: soc_qmap_t_ha_masked,
+  description: 'Taciara-GTSolo_SOC_' + t_ha,
+  assetId: saida_collection + t_ha,
+  pyramidingPolicy: 'mean',
+  region: aoi_bounds,
+  scale: 30,
+  maxPixels: 1e13
+});
+
+var export_description_t_ha = 'SOC_t_ha_v2025_12_01';
+
+function exportPerSupercarta(image, output, description, filter_bounds) {
+
+  var cartas = ee.FeatureCollection('projects/mapbiomas-workspace/AUXILIAR/cartas')
+    .filterBounds(filter_bounds)
+    .map(function (feature) {
+      return feature.set({
+        supercarta: feature.getString('grid_name').slice(0, -4)
+      });
+    });
+
+  var supercartas = cartas.aggregate_array('supercarta').distinct().sort();
+
+  supercartas.evaluate(function (list) {
+    list.forEach(function (supercarta) {
+
+      var def_supercarta = description + '_' + supercarta;
+      var supercartaFeature = cartas.filter(ee.Filter.eq('supercarta', supercarta));
+
+      var imageToExport = image
+        .clip(supercartaFeature.geometry())
+        .set({
+          carta: supercarta,
+          name: def_supercarta,
+          group: description
+        });
+
+      Export.image.toAsset({
+        image: imageToExport,
+        description: def_supercarta,
+        assetId: output + def_supercarta,
+        pyramidingPolicy: { '.default': 'mean' },
+        region: supercartaFeature.geometry(),
+        scale: 30,
+        maxPixels: 1e13
+      });
+    });
+  });
+}
+
+exportPerSupercarta(
+  soc_qmap_t_ha_masked.set({
+    'initiative': 'MAPBIOMAS SOLO',
+    'source': 'Laboratório de Pedometria',
+    'type': t_ha
+  }),
+  saida_collection,
+  export_description_t_ha,
+  aoi_bounds
+);
+
+
+
+// var visual_params = {
+//   min: 0,
+//   max: 100,
+//   palette: require(
+//     'users/wallacesilva/mapbiomas-solos:COLECAO_01/tools/module_palettes.js'
+//   ).get('stock_cos')
+// };
+
+// // Map.addLayer(
+// //   soc_main_t_ha.select('prediction_2020'),
+// //   visual_params,
+// //   'SOC 2020 (main)'
+// // );
+
+// Map.addLayer(
+//   soc_qmap_t_ha.select('prediction_2024'),
+//   visual_params,
+//   'SOC 2024 (qmap)'
+// );
+
+// // Map.addLayer(static_image, {}, 'static_image', false);
+// // Map.addLayer(dynamic_images, {}, 'dynamic_images', false);
+// Map.addLayer(lulc, {}, 'LULC', false);
+// // Map.addLayer(soc_qmap_kg_m2, {}, 'COS soc_main_kg_m2 - full stack [insp]', false);
+// Map.addLayer(soc_qmap_t_ha, {}, 'COS soc_qmap_t_ha - full stack [insp]', false);
