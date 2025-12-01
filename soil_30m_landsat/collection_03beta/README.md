@@ -7,7 +7,7 @@ This directory contains scripts for modeling soil organic carbon stocks, particl
 This directory contains the following subdirectories:
 
 * [carbon](./carbon/): Contains scripts for modeling soil organic carbon stocks in space and time.
-* [texture](./texture/): Contains scripts for modeling soil particle size distribution (clay, silt, and sand) and texture in space and depth to stoniness trasholds (50 and 90% vol).
+* [texture](./texture/): Contains scripts for modeling soil particle size distribution (clay, silt, and sand), soil texture in space and depth to stoniness trasholds (50 and 90% vol); up to 100 cm.
 * [covariate_export](./covariate_export/): Contains scripts for generating covariates used in the soil modeling process (exported).
 
 ## Usage
