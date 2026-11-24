@@ -383,7 +383,7 @@ function botoesDL(id, tipo) {
 }
 /* o: { titulo, sub, total, fonte ("Planilha" | "GEE" | "API MapBiomas"), unidade, metodo, csv() -> [cabeçalho, ...linhas], cfg, alt } */
 function cGrafico(id, o) {
-  CARTOES[id] = { tipo: "grafico", folha: FOLHA, titulo: o.titulo, total: o.total || "", csv: o.csv, fonte: o.fonte, unidade: o.unidade, metodo: o.metodo };
+  CARTOES[id] = { tipo: "grafico", folha: FOLHA, titulo: o.titulo, total: o.total || "", csv: o.csv, fonte: o.fonte, unidade: o.unidade, metodo: o.metodo, cfg: o.cfg };
   PEND.push([id, o.cfg]);
   return `<div class="fs-card"><div class="fs-card-head"><div>${tagFolha()}<h3>${o.titulo}${o.fonte ? src(o.fonte) : ""}</h3>${o.sub ? `<p class="fs-sub">${o.sub}</p>` : ""}${o.total ? `<p class="fs-total">${o.total}</p>` : ""}</div>${botoesDL(id, "grafico")}</div>
     <div class="fs-chart ${o.alt || ""}"><canvas id="fs-cv-${id}" role="img" aria-label="${esc(o.titulo)}"></canvas></div></div>`;
@@ -398,7 +398,8 @@ const seg = (id, ops, atual) => `<div class="fs-seg" role="group" id="${id}">` +
 // ---------- gráficos: barras simples (agrupadas quando há duas séries), rótulo em cada barra ----------
 const refLinha = {
   id: "refLinha",
-  afterDatasetsDraw(ch, _a, op) {
+  beforeDatasetsDraw(ch, _a, op) { // atrás das barras
+    if (ch.options.indexAxis === "y") return; // linhas de referência só em barras verticais na tela
     if (!op || op.v == null) return;
     const { ctx, chartArea: a, scales: { y } } = ch, yy = y.getPixelForValue(op.v);
     ctx.save(); ctx.strokeStyle = op.cor; ctx.lineWidth = 1.2; ctx.setLineDash([5, 4]);
@@ -546,7 +547,7 @@ function f9(rs) {
       metodo: "Área do grupo ÷ área com textura mapeada (exclui fragmentos de rocha e não observado), 2024",
       total: `Textura mapeada: <b>${areaTxt(bt)}</b>`, alt: "s",
       csv: () => [["grupo textural", "area_ha", "percentual"], ...TEX_ORD.map((n, i) => [n, x[i], p[i]]), ["total", bt, 100]],
-      cfg: { labels: TEX_ORD, series: [{ nome: "Proporção", dados: p, cores: TEX_ORD.map(texCor) }], rot: (v) => `${f1.format(v)}%`, tip: (v, i) => `${f1.format(v)}% · ${areaTxt(x[i])}`, tick: (v) => f0.format(v) + "%" },
+      cfg: { labels: TEX_ORD, series: [{ nome: "Proporção", dados: p, cores: TEX_ORD.map(texCor) }], rot: (v) => `${f1.format(v)}%`, info: (i) => areaTxt(x[i]), tip: (v, i) => `${f1.format(v)}% · ${areaTxt(x[i])}`, tick: (v) => f0.format(v) + "%" },
     });
   });
   return kpis(tiles, "Planilha") +
@@ -615,8 +616,12 @@ function f12(rs) {
   const a = soma(CB.map((x) => x[0])), c = soma(CB.map((x) => x[1]));
   const porNome = (n) => CB[D.cobertura.findIndex((x) => x.nome === n)] || [0, 0];
   const ff = porNome("Formação Florestal")[1], ag = porNome("Agricultura")[1];
+  // faixa modal só com as faixas calculadas no GEE: as da API não reproduzem o factsheet
   let faixa = "";
-  const fx = D.cosfx_fonte && D.cosfx_fonte.tipo === "gee" ? somar(D.cosfx, rs) : D.cosfx[chaveAPI()];
+  // só com o cálculo do GEE completo para TODAS as regiões do recorte (o lote interativo falhou em várias UFs;
+  // somar só as que deram certo produz percentuais errados)
+  const fxCompleto = D.cosfx_fonte && D.cosfx_fonte.tipo === "gee" && D.cosfx && [...rs].every((r) => D.cosfx[r]);
+  const fx = fxCompleto ? somar(D.cosfx, rs) : null;
   if (fx) {
     const bins = [fx[0] + fx[1], ...fx.slice(2)], bt = soma(bins), im = bins.indexOf(Math.max(...bins));
     const BN = ["menos de 20", "20 e 30", "30 e 40", "40 e 50", "50 e 60", "60 e 70", "70 e 80", "mais de 80"];
@@ -626,28 +631,37 @@ function f12(rs) {
     tile("Massa em formação florestal", `${massa(ff)[0]}<small>${massa(ff)[1]}</small>`, pct(100 * ff / c) + " do COS do recorte", "#1f8d49") +
     tile("Massa na agricultura", `${massa(ag)[0]}<small>${massa(ag)[1]}</small>`, pct(100 * ag / c) + " do COS do recorte", "#c27ba0") + faixa;
   return kpis(tiles, "Planilha") +
-    `<div class="fs-grid fs-g2">${cMapa("cos12", { titulo: "Estoque de COS · 2024", sub: "t/ha, 0–30 cm", k: "soil_soil_organic_carbon_stock", prm: { year: "2024" } })}<div class="fs-grid">${f13(rs)}</div></div>`;
+    `<div class="fs-grid fs-g2">${cMapa("cos12", { titulo: "Estoque de COS · 2024", sub: "t/ha, 0–30 cm", k: "soil_soil_organic_carbon_stock", prm: { year: "2024" } })}<div class="fs-grid">${f13()}</div></div>`;
 }
 
-// Folha 13 · COS por bioma, com a linha do Brasil
-function f13(rs) {
+// Folha 13 · COS por bioma, com a linha do Brasil. Com um estado escolhido, os biomas daquele estado;
+// com um bioma escolhido, os seis biomas (ou os do estado) com o escolhido em destaque.
+const apagada = (cor) => cor + "55";
+function f13() {
   FOLHA = 13;
   const CBr = somar(D.cob24, regioes("", "")), br = { a: soma(CBr.map((x) => x[0])), c: soma(CBr.map((x) => x[1])) }, refBR = br.c / br.a;
-  const grupos = filtrado() ? [[nomeRecorte(), rs]] : D.biomas.map((b, i) => [b, regioes(String(i), "")]);
-  const v = grupos.map(([n, r]) => { const CB = somar(D.cob24, r) || []; return { n, a: soma(CB.map((x) => x[0])), c: soma(CB.map((x) => x[1])) }; });
-  const ct = soma(v.map((x) => x.c)), onde = filtrado() ? "no recorte" : "nos biomas";
+  const v = D.biomas.map((n, i) => {
+    const CB = somar(D.cob24, regioes(String(i), S.uf)) || [];
+    return { n, i, a: soma(CB.map((x) => x[0])), c: soma(CB.map((x) => x[1])) };
+  }).filter((x) => x.a > 0);
+  const ct = soma(v.map((x) => x.c)), onde = S.uf ? `nos biomas de ${D.ufs[S.uf]}` : "nos biomas";
+  const dest = (x) => S.bioma === "" || x.i === +S.bioma;
+  const corGt = css("--accent"), corTha = "#e8761f";
+  const nota = S.bioma !== "" ? ` · em destaque: ${D.biomas[+S.bioma]}` : "";
   return cGrafico("bio-gt", {
     titulo: `Massa de COS ${onde} · 2024`, fonte: "Planilha", unidade: "Gt (bilhões de toneladas), 0–30 cm",
-    metodo: "Σ COS das regiões bioma × UF de cada bioma, 2024",
-    total: `Total: <b>${massaTxt(ct)}</b>`,
-    csv: () => [["recorte", "cos_t", "area_ha", "pct_da_massa"], ...v.map((x) => [x.n, x.c, x.a, 100 * x.c / ct])],
-    cfg: { labels: v.map((x) => x.n), hz: true, series: [{ nome: "Massa", dados: v.map((x) => x.c / 1e9), cor: css("--accent") }], rot: (x) => `${f2.format(x)} Gt · ${pct(100 * x * 1e9 / ct)}`, tick: (x) => f0.format(x) },
+    metodo: `Σ COS das regiões bioma × UF de cada bioma${S.uf ? " dentro do estado" : ""}, 2024`,
+    total: `Total: <b>${massaTxt(ct)}</b>${nota}`,
+    csv: () => [["bioma", "cos_t", "area_ha", "pct_da_massa"], ...v.map((x) => [x.n, x.c, x.a, 100 * x.c / ct]), ["total", ct, soma(v.map((x) => x.a)), 100]],
+    cfg: { labels: v.map((x) => x.n), hz: true, series: [{ nome: "Massa", dados: v.map((x) => x.c / 1e9), cores: v.map((x) => dest(x) ? corGt : apagada(corGt)) }],
+      rot: (x) => `${f2.format(x)} Gt · ${pct(100 * x * 1e9 / ct)}`, pv: (x) => f2.format(x), info: (i) => `${pct(100 * v[i].c / ct)} · ${areaTxt(v[i].a)}`, tick: (x) => f0.format(x) },
   }) + cGrafico("bio-tha", {
     titulo: `Estoque médio de COS ${onde} · 2024`, fonte: "Planilha", unidade: "t/ha, 0–30 cm",
-    metodo: "Σ COS ÷ Σ área de cada bioma (média ponderada pela área); linha tracejada = Brasil",
-    total: `Estoque do Brasil: <b>${f1.format(refBR)} t/ha</b> (linha tracejada)`,
-    csv: () => [["recorte", "estoque_medio_t_ha", "cos_t", "area_ha"], ...v.map((x) => [x.n, x.c / x.a, x.c, x.a]), ["Brasil", refBR, br.c, br.a]],
-    cfg: { labels: v.map((x) => x.n), series: [{ nome: "Estoque", dados: v.map((x) => x.c / x.a), cor: "#e8761f" }], rot: (x) => f1.format(x), tick: (x) => f0.format(x), ref: { v: refBR, txt: `Brasil: ${f1.format(refBR)} t/ha` }, folga: 1.18 },
+    metodo: "Σ COS ÷ Σ área de cada bioma (média ponderada pela área total); linha tracejada = Brasil",
+    total: `Estoque do Brasil: <b>${f1.format(refBR)} t/ha</b> (linha tracejada)${nota}`,
+    csv: () => [["bioma", "estoque_medio_t_ha", "cos_t", "area_ha"], ...v.map((x) => [x.n, x.c / x.a, x.c, x.a]), ["Brasil", refBR, br.c, br.a]],
+    cfg: { labels: v.map((x) => x.n), series: [{ nome: "Estoque", dados: v.map((x) => x.c / x.a), cores: v.map((x) => dest(x) ? corTha : apagada(corTha)) }],
+      rot: (x) => f1.format(x), info: (i) => areaTxt(v[i].a), tick: (x) => f0.format(x), ref: { v: refBR, txt: `Brasil: ${f1.format(refBR)} t/ha` }, folga: 1.18 },
   });
 }
 
@@ -658,14 +672,22 @@ function f14(rs) {
   let graf = "";
   grupos.forEach(([n, r], gi) => {
     const T = somar(D.tex24, r) || D.texturas.map(() => [0, 0]);
-    const lin = TEX_ORD.map((t) => ({ t, a: T[texIdx(t)][0], c: T[texIdx(t)][1] })).filter((x) => x.a > 0 && x.c > 0);
-    const at = soma(lin.map((x) => x.a)), ctot = soma(lin.map((x) => x.c));
+    const todos = TEX_ORD.map((t) => ({ t, a: T[texIdx(t)][0], c: T[texIdx(t)][1] })).filter((x) => x.a > 0 && x.c > 0);
+    const at = soma(todos.map((x) => x.a)), ctot = soma(todos.map((x) => x.c));
+    // estratos com menos de 1% da área com textura ficam só no CSV (ex.: siltosa no Cerrado, com área quase nula)
+    const lin = todos.filter((x) => x.a >= 0.01 * at), fora = todos.filter((x) => x.a < 0.01 * at);
+    const CB = somar(D.cob24, r) || [], cTot = soma(CB.map((x) => x[1])), aTot = soma(CB.map((x) => x[0]));
     graf += cGrafico("ct14-" + gi, {
       titulo: `Estoque de COS por textura · ${esc(n)}`, fonte: "Planilha", unidade: "t/ha, 0–30 cm",
-      metodo: "Σ COS ÷ Σ área de cada grupo textural (0–30 cm), 2024",
-      total: `Média do recorte: <b>${f1.format(ctot / at)} t/ha</b>`, alt: "s",
-      csv: () => [["grupo textural", "estoque_medio_t_ha", "cos_t", "area_ha"], ...lin.map((x) => [x.t, x.c / x.a, x.c, x.a]), ["total", ctot / at, ctot, at]],
-      cfg: { labels: lin.map((x) => x.t), series: [{ nome: "Estoque", dados: lin.map((x) => x.c / x.a), cores: lin.map((x) => texCor(x.t)) }], rot: (v) => f1.format(v), tip: (v, i) => `${f1.format(v)} t/ha · ${areaTxt(lin[i].a)}`, tick: (v) => f0.format(v) },
+      metodo: "Σ COS ÷ Σ área de cada grupo textural (0–30 cm), 2024; linha = média sobre a área com textura mapeada (exclui fragmentos de rocha e não observado)",
+      total: `Média sobre a área com textura mapeada: <b>${f1.format(ctot / at)} t/ha</b> · sobre a área total: ${f1.format(cTot / aTot)} t/ha` +
+        (fora.length ? ` · fora do gráfico (menos de 1% da área): ${fora.map((x) => `${x.t.toLowerCase()} (${areaTxt(x.a)})`).join(", ")}` : ""),
+      alt: "s",
+      csv: () => [["grupo textural", "estoque_medio_t_ha", "cos_t", "area_ha", "pct_area"], ...todos.map((x) => [x.t, x.c / x.a, x.c, x.a, 100 * x.a / at]),
+        ["total (área com textura mapeada)", ctot / at, ctot, at, 100], ["total (área total do recorte)", cTot / aTot, cTot, aTot, ""]],
+      cfg: { labels: lin.map((x) => x.t), series: [{ nome: "Estoque", dados: lin.map((x) => x.c / x.a), cores: lin.map((x) => texCor(x.t)) }],
+        rot: (v, i) => `${f1.format(v)} · ${area(lin[i].a)[0]} ${area(lin[i].a)[1]}`, pv: (v) => f1.format(v), info: (i) => areaTxt(lin[i].a),
+        tip: (v, i) => `${f1.format(v)} t/ha · ${areaTxt(lin[i].a)}`, tick: (v) => f0.format(v), ref: { v: ctot / at, txt: `média: ${f1.format(ctot / at)} t/ha` }, folga: 1.3 },
     });
   });
   return `<div class="fs-grid fs-gm">${graf}</div>`;
@@ -888,22 +910,94 @@ function csvCartao(id) {
     ...c.csv(),
   ]);
 }
-async function pngGrafico(id) {
-  const canvas = q("fs-cv-" + id), c0 = CARTOES[id];
-  const r = canvas.width / canvas.clientWidth || 1, top = Math.round((c0.total ? 62 : 44) * r), pad = Math.round(14 * r), rod = Math.round(26 * r);
-  const c = Object.assign(document.createElement("canvas"), { width: canvas.width + 2 * pad, height: canvas.height + top + rod + 2 * pad });
-  const ctx = c.getContext("2d");
-  ctx.fillStyle = css("--surface"); ctx.fillRect(0, 0, c.width, c.height);
-  ctx.textBaseline = "top";
-  ctx.fillStyle = css("--ink"); ctx.font = `600 ${Math.round(15 * r)}px "Source Sans 3", sans-serif`;
-  ctx.fillText(textoLimpo(c0.titulo), pad, pad, c.width - 2 * pad);
-  ctx.fillStyle = css("--ink-2"); ctx.font = `500 ${Math.round(12 * r)}px "Source Sans 3", sans-serif`;
-  ctx.fillText(`${nomeRecorte()}${c0.unidade ? " · " + c0.unidade : ""}`, pad, pad + Math.round(20 * r), c.width - 2 * pad);
-  if (c0.total) { ctx.font = `600 ${Math.round(12 * r)}px "Source Sans 3", sans-serif`; ctx.fillText(textoLimpo(c0.total), pad, pad + Math.round(37 * r), c.width - 2 * pad); }
-  ctx.drawImage(canvas, pad, pad + top);
-  ctx.fillStyle = css("--muted"); ctx.font = `500 ${Math.round(10.5 * r)}px "Source Sans 3", sans-serif`;
-  ctx.fillText(`Fonte: ${FONTES[c0.fonte] || c0.fonte || "MapBiomas"} · MapBiomas Solo col. 3 (beta)`, pad, c.height - pad - Math.round(12 * r), c.width - 2 * pad);
-  return new Promise((res) => c.toBlob(res, "image/png"));
+/* PNG no estilo aprovado para o factsheet (referência: analises/carbono_solo_cerrado/cerrado_tha_por_cobertura_2024.png):
+   barras horizontais sem eixos nem grade; nome e área dentro da barra à esquerda, valor à direita (texto branco em barra
+   escura); linha da média atrás das barras; título, subtítulo com unidade e método, fonte no rodapé; fundo branco. */
+const FONTE_PNG = `"Source Sans 3", "Segoe UI", Arial, sans-serif`;
+function corEscura(cor) {
+  const m = /^#([0-9a-f]{6})/i.exec(String(cor).trim()); if (!m) return false;
+  const n = parseInt(m[1], 16), [r, g, b] = [n >> 16 & 255, n >> 8 & 255, n & 255].map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; });
+  const alfa = String(cor).trim().length === 9 ? parseInt(String(cor).trim().slice(7), 16) / 255 : 1;
+  return alfa > 0.6 && 0.2126 * r + 0.7152 * g + 0.0722 * b < 0.28;
+}
+function quebrar(ctx, txt, larg) {
+  const linhas = []; let atual = "";
+  for (const p of String(txt).split(" ")) { const t = atual ? atual + " " + p : p; if (ctx.measureText(t).width > larg && atual) { linhas.push(atual); atual = p; } else atual = t; }
+  if (atual) linhas.push(atual);
+  return linhas;
+}
+function pngGrafico(id) {
+  const c0 = CARTOES[id], cfg = c0.cfg, W = 1800, pad = 72, larg = W - 2 * pad;
+  const multi = cfg.series.length > 1, n = cfg.labels.length;
+  const pv = cfg.pv || cfg.rot, info = cfg.info || (() => "");
+  const tinta = "#1d1d1d", cinza = "#5b5b5b", destaque = "#a3522d";
+  const med = document.createElement("canvas").getContext("2d");
+  // cabeçalho
+  med.font = `700 54px ${FONTE_PNG}`; const tit = quebrar(med, `${textoLimpo(c0.titulo).replace(" · " + nomeRecorte(), "")} — ${nomeRecorte()}`, larg);
+  med.font = `400 32px ${FONTE_PNG}`; const sub = quebrar(med, [c0.unidade, c0.metodo].filter(Boolean).join(" · "), larg);
+  const tot = c0.total ? quebrar(med, textoLimpo(c0.total), larg) : [];
+  const hCab = tit.length * 64 + 18 + sub.length * 42 + (tot.length ? 10 + tot.length * 40 : 0) + (cfg.ref ? 70 : 34) + (multi ? 56 : 0);
+  const linhaH = multi ? 150 : 118, barH = multi ? 46 : 96;
+  const H = pad + hCab + n * linhaH + 40 + 40 + pad;
+  const cv = Object.assign(document.createElement("canvas"), { width: W, height: H }), ctx = cv.getContext("2d");
+  ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, W, H);
+  ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
+  let y = pad + 50;
+  ctx.fillStyle = tinta; ctx.font = `700 54px ${FONTE_PNG}`; tit.forEach((l) => { ctx.fillText(l, pad, y); y += 64; });
+  y += 4; ctx.fillStyle = cinza; ctx.font = `400 32px ${FONTE_PNG}`; sub.forEach((l) => { ctx.fillText(l, pad, y); y += 42; });
+  if (tot.length) { y += 10; ctx.fillStyle = tinta; tot.forEach((l) => { ctx.fillText(l, pad, y); y += 40; }); }
+  if (multi) { // legenda das séries
+    y += 26; let lx = pad;
+    cfg.series.forEach((s) => {
+      const cor = Array.isArray(s.cores || s.cor) ? (s.cores || s.cor)[0] : (s.cores || s.cor);
+      ctx.fillStyle = cor; ctx.fillRect(lx, y - 26, 30, 30); ctx.fillStyle = tinta; ctx.font = `600 30px ${FONTE_PNG}`;
+      ctx.fillText(s.nome + (s.nome === "2024" ? " (cor de cada classe)" : ""), lx + 42, y); lx += 42 + ctx.measureText(s.nome).width + (s.nome === "2024" ? 330 : 50);
+    });
+  }
+  const topo = y + (cfg.ref ? 70 : 34) - (multi ? 0 : 0);
+  const max = Math.max(...cfg.series.flatMap((s) => s.dados.filter((v) => v != null)), cfg.ref ? cfg.ref.v : 0) || 1;
+  const esc = (v) => larg * v / (max * (multi ? 1.12 : 1.0));
+  // linha de referência (atrás das barras)
+  if (cfg.ref) {
+    const xr = pad + esc(cfg.ref.v);
+    ctx.save(); ctx.strokeStyle = destaque; ctx.lineWidth = 5; ctx.setLineDash([20, 14]);
+    ctx.beginPath(); ctx.moveTo(xr, topo - 52); ctx.lineTo(xr, topo + n * linhaH); ctx.stroke(); ctx.restore();
+    ctx.fillStyle = destaque; ctx.font = `700 32px ${FONTE_PNG}`; ctx.textAlign = "right"; ctx.fillText(cfg.ref.txt, xr - 12, topo - 22); ctx.textAlign = "left";
+  }
+  const corDe = (s, i) => { const c = s.cores || s.cor; return Array.isArray(c) ? c[i] : c; };
+  for (let i = 0; i < n; i++) {
+    const y0 = topo + i * linhaH;
+    if (!multi) {
+      const s = cfg.series[0], v = s.dados[i] || 0, w = Math.max(4, esc(v)), cor = corDe(s, i), escura = corEscura(cor);
+      ctx.fillStyle = cor; ctx.fillRect(pad, y0, w, barH);
+      if (/^#fff|^#ffe|^#ffef/i.test(cor)) { ctx.strokeStyle = "#555555"; ctx.lineWidth = 2; ctx.strokeRect(pad + 1, y0 + 1, w - 2, barH - 2); }
+      const nome = String(cfg.labels[i]), inf = info(i), val = pv(v, i, 0);
+      ctx.font = `700 40px ${FONTE_PNG}`; const wNome = ctx.measureText(nome).width;
+      ctx.font = `700 52px ${FONTE_PNG}`; const wVal = ctx.measureText(val).width;
+      const cabe = w >= wNome + wVal + 90, valDentro = w >= wVal + 52;
+      // valor
+      ctx.font = `700 52px ${FONTE_PNG}`;
+      let xFimTexto;
+      if (valDentro) { ctx.fillStyle = escura ? "#ffffff" : tinta; ctx.textAlign = "right"; ctx.fillText(val, pad + w - 26, y0 + barH / 2 + 18); ctx.textAlign = "left"; xFimTexto = pad + w + 28; }
+      else { ctx.fillStyle = tinta; ctx.fillText(val, pad + w + 20, y0 + barH / 2 + 18); xFimTexto = pad + w + 20 + wVal + 28; }
+      // nome e área: dentro da barra se couber, senão à direita
+      const xn = cabe ? pad + 26 : xFimTexto, corN = cabe && escura ? "#ffffff" : tinta;
+      ctx.fillStyle = corN; ctx.font = `700 40px ${FONTE_PNG}`; ctx.fillText(nome, xn, y0 + (inf ? 42 : barH / 2 + 14));
+      if (inf) { ctx.fillStyle = cabe && escura ? "rgba(255,255,255,0.85)" : cinza; ctx.font = `400 30px ${FONTE_PNG}`; ctx.fillText(inf, xn, y0 + 78); }
+    } else {
+      ctx.fillStyle = tinta; ctx.font = `700 34px ${FONTE_PNG}`; ctx.fillText(String(cfg.labels[i]), pad, y0 + 30);
+      cfg.series.forEach((s, si) => {
+        const v = s.dados[i] || 0, w = Math.max(3, esc(v)), yb = y0 + 44 + si * (barH + 6), cor = corDe(s, i);
+        ctx.fillStyle = cor; ctx.fillRect(pad, yb, w, barH);
+        if (/^#fff|^#ffe|^#ffef/i.test(cor)) { ctx.strokeStyle = "#555555"; ctx.lineWidth = 2; ctx.strokeRect(pad + 1, yb + 1, w - 2, barH - 2); }
+        ctx.fillStyle = tinta; ctx.font = `700 32px ${FONTE_PNG}`;
+        ctx.fillText(`${pv(v, i, si)}${multi ? "  " + s.nome : ""}`, pad + w + 14, yb + barH / 2 + 12);
+      });
+    }
+  }
+  ctx.fillStyle = "#777777"; ctx.font = `400 28px ${FONTE_PNG}`; ctx.textAlign = "left";
+  ctx.fillText(`Fonte: ${FONTES[c0.fonte] || c0.fonte || "MapBiomas"} · MapBiomas Solo, Coleção 3 (beta)`, pad, H - pad + 10, larg);
+  return new Promise((res) => cv.toBlob(res, "image/png"));
 }
 async function aoClicar(e) {
   const b = e.target.closest(".fs-dl button"); if (!b) return;
@@ -956,7 +1050,7 @@ return { montarAba, montar, atualizar: render, desmontar, dados, abas: Object.ke
 const $ = (id) => document.getElementById(id);
 let D = null, A = null;
 // muda a cada atualização dos dados, para o navegador não usar uma cópia antiga do cache
-const VERSAO_DADOS = "2026-11-24-niveis-c";   // D = planilha (dados.json) · A = API (dados_api.json)
+const VERSAO_DADOS = "2026-11-24-revisao-12-14";   // D = planilha (dados.json) · A = API (dados_api.json)
 const S = { bioma: "", uf: "", ano: 2024, tab: "carbono",
   serie: "massa", cobM: "tha", nivCob: "2", mxCol: "auto", mxM: "tha",
   fracao: "argila", camGran: "000_010", nivel: "grupo", camTex: "000_030", texM: "tha", camNivel: "grupo", ped: "50" };
