@@ -555,9 +555,10 @@ function abaPedregosidade() {
   for (const k in D.ped[tipo]) { if (!rs.has(regDe(k))) continue; const f = +k.split("|")[1]; v[f][0] += D.ped[tipo][k][0]; v[f][1] += D.ped[tipo][k][1]; }
   const totP = v.reduce((s, x) => s + x[0], 0);
   const atP = v.filter((_, f) => F[f] !== "100cm").reduce((s, x) => [s[0] + x[0], s[1] + x[1]], [0, 0]);
-  const ap = apiRec(), leg = A && A.legendas.pedregosidade, vals = ap && ap.pedregosidade && ap.pedregosidade[S.ped];
-  const ate = vals ? vals.slice(0, 10) : null, cens = vals ? vals[10] : 0, totA = vals ? vals.reduce((x, y) => x + y, 0) : 0;
-  const atA = ate ? ate.reduce((x, y) => x + y, 0) : 0;
+  // A API devolve os mesmos números para os limiares de 50% e 90% (o parâmetro "volume" não é aplicado
+  // nas estatísticas), por isso esta aba usa a planilha, que separa os dois limiares.
+  const ate = v.slice(0, 10).map((x) => x[0]), atA = atP[0], cens = v[10][0], totA = totP;
+  const CORES_PED = ["#56008f", "#7d00a3", "#c300a9", "#ff2f9a", "#ff4f78", "#ff6e63", "#ff9678", "#ffc5a1", "#ffdfc6", "#fff8eb"];
   const j = tipo === "dominante" ? 0 : 2, mun = new Map();
   for (const k in D.mun) { if (!rs.has(regDe(k))) continue; const n = k.slice(k.indexOf("|") + 1), w = D.mun[k]; const o = mun.get(n) || { n, a: 0, m: 0 }; o.a += w[j]; o.m += w[j + 1]; mun.set(n, o); }
   const top = [...mun.values()].filter((x) => x.a > 0).sort((x, y) => y.a - x.a).slice(0, 15);
@@ -567,16 +568,16 @@ function abaPedregosidade() {
     <p class="sub">Dominante: mais de 50% do volume do solo. Extrema: mais de 90%. Mapa de 2024, com o perfil avaliado até 100 cm.</p></div>
     <div class="detail">${seg("s-ped", [["50", "Dominante (> 50%)"], ["90", "Extrema (> 90%)"]], S.ped)}</div></div></div></div>
   <div class="kpis">
-    ${tile(`Área com o limiar até 100 cm ${vals ? "" : "(planilha)"}`, `${area(vals ? atA : atP[0])[0]}<small>${area(vals ? atA : atP[0])[1]}</small>`,
-      `${pct(100 * (vals ? atA / totA : atP[0] / totP))} da área avaliada`, cor, true)}
+    ${tile("Área com o limiar até 100 cm", `${area(atA)[0]}<small>${area(atA)[1]}</small>`, `${pct(100 * atA / totA)} da área avaliada · planilha, 2024`, cor, true)}
     ${tile("COS nessa área · 0–30 cm", `${massa(atP[1])[0]}<small>${massa(atP[1])[1]}</small>`, atP[0] ? `${f1.format(atP[1] / atP[0])} t/ha · planilha, 2024` : "planilha, 2024")}
-    ${tile("Sem o limiar no 1º metro", `${pct(100 * (vals ? cens / totA : 1 - atP[0] / totP))}`, "valor censurado em 100 cm")}
+    ${tile("Sem o limiar no 1º metro", `${pct(100 * cens / totA)}`, "valor censurado em 100 cm")}
   </div>
   <div class="grid2">
-    <div class="card"><div class="card-head"><div><h3>Profundidade em que o limiar é atingido ${src("API MapBiomas")}</h3>
+    <div class="card"><div class="card-head"><div><h3>Profundidade em que o limiar é atingido ${src("planilha")}</h3>
       <p class="sub">Área por faixa de 10 cm. Não inclui a área onde o limiar não aparece até 100 cm.</p>
-      ${ate ? `<p class="total">Total: <b>${areaTxt(atA)}</b></p>` : ""}</div></div>
-      ${ate ? `<div class="chart"><canvas id="c-ped" aria-label="Área por profundidade"></canvas></div>` : semAPI()}
+      <p class="total">Total: <b>${areaTxt(atA)}</b></p></div></div>
+      <div class="chart"><canvas id="c-ped" aria-label="Área por profundidade"></canvas></div>
+      <p class="sub" style="margin-top:8px">A API da Plataforma devolve hoje os mesmos números para 50% e 90%; por isso usamos a planilha oficial.</p>
     </div>
     <div class="card"><div class="card-head"><div><h3>Municípios com mais área ${src("planilha")}</h3>
       <p class="sub">${esc(nomeRecorte())} · limiar atingido antes de 100 cm.</p></div></div>
@@ -584,8 +585,8 @@ function abaPedregosidade() {
       ${top.length ? top.map((x) => `<tr><td>${esc(x.n)}</td><td>${f1.format(x.a / 1e3)}</td><td>${f1.format(x.m / 1e3)}</td><td>${x.a ? f1.format(x.m / x.a) : "—"}</td></tr>`).join("") : `<tr><td colspan="4">Nenhum município com esse limiar no recorte.</td></tr>`}
       </tbody></table></div></div>
   </div>`;
-  if (ate) barras("c-ped", { horizontal: false, labels: Array.from({ length: 10 }, (_, k) => `${k * 10}–${k * 10 + 10}`), valores: ate.map((x) => x / 1e3),
-    cores: leg.items.slice(0, 10).map((x) => x.cor), fmt: (x) => f1.format(x), unidade: "mil ha", esconderZero: true });
+  barras("c-ped", { horizontal: false, labels: Array.from({ length: 10 }, (_, k) => `${k * 10}–${k * 10 + 10}`), valores: ate.map((x) => x / 1e3),
+    cores: CORES_PED, fmt: (x) => f1.format(x), unidade: "mil ha", esconderZero: true });
   ligar("s-ped", "ped");
 }
 
@@ -830,8 +831,8 @@ function abaMetodo() {
     <dl>
       <dt>API MapBiomas</dt><dd>Áreas por classe da legenda oficial de cada produto, consultadas na API pública da Plataforma
         (<code>/statistics/area</code>) para o Brasil, os 6 biomas, os 27 estados e as interseções bioma × estado${A ? `, em ${esc(A.baixado_em)}` : ""}:
-        área por faixa de estoque de COS (1985–2024), por faixa de teor de argila, silte e areia (10 camadas), por classe textural (6 camadas) e pela profundidade da pedregosidade.</dd>
-      <dt>Planilha oficial</dt><dd><b>estatisticas - MBSOLO3</b>: massa de COS (toneladas) e área cruzadas com a cobertura e uso da Coleção 10, a textura e os municípios.
+        área por faixa de estoque de COS (1985–2024), por faixa de teor de argila, silte e areia (10 camadas), por classe textural (6 camadas). A pedregosidade também está na API, mas ela devolve os mesmos números para os limiares de 50% e 90% (o parâmetro <code>volume</code> não é aplicado nas estatísticas); por isso a aba Pedregosidade usa a planilha.</dd>
+      <dt>Planilha oficial</dt><dd><b>estatisticas - MBSOLO3</b>: massa de COS (toneladas) e área cruzadas com a cobertura e uso da Coleção 10, a textura, a pedregosidade e os municípios.
         A API devolve só área, então a massa, o estoque médio (t/ha) e os municípios vêm daqui. Média ponderada = soma do COS ÷ soma da área do recorte.</dd>
       <dt>Google Earth Engine</dt><dd>Teor médio (%) de argila, silte e areia por camada, ponderado pela área (assets públicos <code>mapbiomas_brazil_collection3_soil_*_fraction_v1</code>, escala de 300 m). A API e a planilha não trazem médias.</dd>
       <dt>Fábrica de GIFs</dt><dd>Mapas e contornos pedidos ao vivo à API (<code>/maps/map</code>, <code>/territories/geometry</code>). Funciona na versão publicada no GitHub; o visualizador de artefatos do Claude bloqueia o acesso a sites externos.</dd>
