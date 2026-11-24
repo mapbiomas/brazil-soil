@@ -207,7 +207,8 @@ dados = {
     "texturas": {k: [{"nome": n, "cor": c} for n, c in v] for k, v in TEX.items()},
     "camadas": ["0–10 cm", "0–20 cm", "0–30 cm", "20–40 cm", "30–60 cm", "60–100 cm"],
     "pedregosidade_faixas": PED,
-    "cobn": cobn, "tex": tex,  # o nível 2 de cobn substitui o antigo "cob" "cam": cam, "ped": ped, "mun": municipios, "gran": gran,
+    # o nível 2 de cobn substitui o antigo "cob"
+    "cobn": cobn, "tex": tex, "cam": cam, "ped": ped, "mun": municipios, "gran": gran,
 }
 OUT.parent.mkdir(exist_ok=True)
 OUT.write_text(json.dumps(dados, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
