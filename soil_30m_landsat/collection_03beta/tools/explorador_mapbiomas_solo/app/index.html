@@ -80,7 +80,17 @@ button { font: inherit; }
 .tag { display: inline-flex; align-items: center; gap: 6px; font: 600 0.7rem var(--mono); letter-spacing: 0.04em; padding: 5px 10px; border-radius: 999px; background: var(--accent-weak); color: var(--ink-2); white-space: nowrap; }
 
 /* Filtros (recolhíveis) */
-.filters { margin: 20px 0 6px; border: 1px solid var(--ring); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); }
+.filters { margin: 20px 0 6px; border: 1px solid var(--ring); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow);
+  position: sticky; top: calc(8px + env(safe-area-inset-top, 0px)); z-index: 15; }
+/* ao rolar, a faixa de filtros encolhe para uma linha e fica presa no topo, com as abas logo abaixo */
+.filters.compacto .fbar { padding: 6px 14px; }
+.filters.compacto .fbody { padding: 0 14px 8px; gap: 10px; border-top: 0; }
+.filters.compacto .field { padding-top: 0; gap: 2px; }
+.filters.compacto .flabel, .filters.compacto .range-scale { display: none; }
+.filters.compacto select { padding: 5px 30px 5px 10px; font-size: 0.86rem; }
+.filters.compacto .year-row output { font-size: 1.05rem; }
+@media (max-width: 640px) { .filters.compacto:not(.aberto-compacto) .fbody { display: none; } }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 16; background: var(--page); }
 .fbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; flex-wrap: wrap; }
 .fbar .slice { font-size: 0.88rem; color: var(--ink-2); }
 .fbar .slice b { color: var(--ink); }
@@ -99,7 +109,8 @@ input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); cursor
 .status { margin: 0 0 12px; font-size: 0.8rem; color: var(--muted); min-height: 1.2em; text-align: right; }
 
 /* Abas */
-.tabs { display: flex; flex-wrap: wrap; gap: 4px; width: fit-content; max-width: 100%; padding: 4px; margin: 4px 0 18px; border-radius: 12px; background: var(--paper-2); }
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; width: fit-content; max-width: 100%; padding: 4px; margin: 4px 0 18px; border-radius: 12px; background: var(--paper-2);
+  position: sticky; top: calc(var(--altura-filtros, 0px) + 14px + env(safe-area-inset-top, 0px)); z-index: 14; box-shadow: 0 0 0 6px var(--page); }
 @media (max-width: 640px) { .tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; } }
 .tabs button { flex: none; padding: 9px 15px; border: 0; border-radius: 9px; background: transparent; color: var(--ink-2); font-size: 0.86rem; font-weight: 600; white-space: nowrap; cursor: pointer; }
 .tabs button:hover { color: var(--ink); }
@@ -1058,7 +1069,7 @@ return { montarAba, montar, atualizar: render, desmontar, dados, abas: Object.ke
 const $ = (id) => document.getElementById(id);
 let D = null, A = null;
 // muda a cada atualização dos dados, para o navegador não usar uma cópia antiga do cache
-const VERSAO_DADOS = "2026-11-24-revisao-12-14";   // D = planilha (dados.json) · A = API (dados_api.json)
+const VERSAO_DADOS = "2026-11-24-workshop";   // D = planilha (dados.json) · A = API (dados_api.json)
 const S = { bioma: "", uf: "", ano: 2024, tab: "carbono",
   serie: "massa", cobM: "tha", nivCob: "2", mxCol: "auto", mxM: "tha",
   fracao: "argila", camGran: "000_010", nivel: "grupo", camTex: "000_030", texM: "tha", camNivel: "grupo", ped: "50" };
@@ -1082,6 +1093,18 @@ function aplicarFiltros(recolhido) {
 }
 aplicarFiltros(lerPref("solo-filtros") === "1");
 $("btn-filtros").addEventListener("click", () => { const r = !$("filters").classList.contains("collapsed"); salvarPref("solo-filtros", r ? "1" : "0"); aplicarFiltros(r); });
+// filtros fixos: modo compacto ao rolar; as abas grudam logo abaixo (altura medida em --altura-filtros)
+(() => {
+  const f = $("filters");
+  const medir = () => root.style.setProperty("--altura-filtros", f.offsetHeight + "px");
+  const rolar = () => { const c = window.scrollY > 160; if (c !== f.classList.contains("compacto")) { f.classList.toggle("compacto", c); medir(); } };
+  window.addEventListener("scroll", rolar, { passive: true });
+  window.addEventListener("resize", medir);
+  if (window.ResizeObserver) new ResizeObserver(medir).observe(f);
+  // no celular, no modo compacto, tocar na linha do recorte abre os seletores
+  $("slice").addEventListener("click", () => f.classList.toggle("aberto-compacto"));
+  medir(); rolar();
+})();
 
 // ---------- formatação pt-BR ----------
 const nf = (d) => new Intl.NumberFormat("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -1214,6 +1237,33 @@ const semAPI = () => `<p class="note">Este recorte ainda não tem estatística b
 const nomeCamada = (c) => { const [a, b] = c.split("_").map(Number); return `${a}–${b} cm`; };
 
 // ================= Carbono =================
+// barras agrupadas (2 ou 3 séries), rótulo em cada barra; usadas nas comparações da apresentação
+function barrasPar(id, o) {
+  if (charts[id]) charts[id].destroy();
+  const el = $(id); if (!el) return;
+  Chart.defaults.font.family = css("--body"); Chart.defaults.color = css("--ink-2");
+  const hz = o.horizontal !== false;
+  const max = Math.max(0, ...o.series.flatMap((x) => x.dados.filter((v) => v != null)));
+  charts[id] = new Chart(el, {
+    type: "bar", plugins: [ChartDataLabels],
+    data: { labels: o.labels, datasets: o.series.map((x) => ({ label: x.nome, data: x.dados, backgroundColor: x.cores || x.cor, borderColor: css("--seam"), borderWidth: 1, borderRadius: 3, maxBarThickness: 26 })) },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false, indexAxis: hz ? "y" : "x",
+      plugins: {
+        legend: { display: true, position: "top", align: "start", labels: { color: css("--ink-2"), boxWidth: 12, boxHeight: 12, font: { size: 11, weight: 600 } } },
+        tooltip: tip((c) => `${c.dataset.label}: ${o.rot(c.raw, c.dataIndex, c.datasetIndex)}`),
+        datalabels: { anchor: "end", align: "end", offset: 2, clamp: true, clip: false, color: css("--ink"), font: { size: 10.5, weight: 600 },
+          formatter: (v, ctx) => v == null ? "" : o.rot(v, ctx.dataIndex, ctx.datasetIndex) },
+      },
+      scales: hz
+        ? { x: eixo(o.unidade || "", { beginAtZero: true, max: niceMax(max * (o.folga || 1.7)) }), y: eixo("", { grid: { display: false }, ticks: { color: css("--ink-2"), autoSkip: false, font: { size: 11 } } }) }
+        : { x: eixo("", { grid: { display: false } }), y: eixo(o.unidade || "", { beginAtZero: true, max: niceMax(max * 1.2) }) },
+    },
+  });
+  charts[id].$unidade = o.unidade; charts[id].$unidades = o.series.map((x) => x.unidade || o.unidade);
+}
+const COR_BIOMA = { "Amazônia": "#1f8d49", "Caatinga": "#f1c232", "Cerrado": "#e69138", "Mata Atlântica": "#2ecc71", "Pampa": "#c5b358", "Pantanal": "#2a9df4" };
+
 function abaCarbono() {
   const { rs, porCob, tot } = R, i = idx(S.ano);
   const a = tot[i], c = tot[40 + i], a85 = tot[0], c85 = tot[40];
@@ -1224,7 +1274,19 @@ function abaCarbono() {
   const metr = { tha: (l) => (l.a ? l.m / l.a : 0), massa: (l) => l.m / 1e9, area: (l) => l.a / 1e6 };
   const un = { tha: "t/ha", massa: "Gt", area: "Mha" };
   const fm = { tha: (v) => f1.format(v), massa: (v) => f2.format(v), area: (v) => f1.format(v) };
-  const ord = linhas.filter((l) => S.cobM !== "tha" || l.m > 0).sort((x, y) => metr[S.cobM](y) - metr[S.cobM](x));
+  // classes com menos de 1% da área do recorte somadas em "Outros" (#ffa07a), como na figura da apresentação; o CSV da matriz traz todas
+  const aTot = linhas.reduce((x, l) => x + l.a, 0);
+  const grandes = linhas.filter((l) => l.a >= 0.01 * aTot), miudas = linhas.filter((l) => l.a < 0.01 * aTot);
+  const comOutros = miudas.length > 1 ? [...grandes, { nome: `Outros (${miudas.length} classes)`, cor: "#ffa07a", a: miudas.reduce((x, l) => x + l.a, 0), m: miudas.reduce((x, l) => x + l.m, 0) }] : linhas;
+  const ord = comOutros.filter((l) => S.cobM !== "tha" || l.m > 0).sort((x, y) => metr[S.cobM](y) - metr[S.cobM](x));
+  // participação no COS × participação na área: biomas do recorte, ou estados quando um bioma está escolhido
+  const porUF = S.bioma !== "" && !S.uf, grp = new Map();
+  for (const k in D.cob) {
+    const r = regDe(k); if (!rs.has(r)) continue;
+    const [b, u] = D.regioes[r], g = porUF ? u : D.biomas[b], v = D.cob[k], o = grp.get(g) || [0, 0];
+    o[0] += v[i]; o[1] += v[40 + i]; grp.set(g, o);
+  }
+  const part = [...grp.entries()].map(([n, [ga, gc]]) => ({ n, a: ga, c: gc })).sort((x, y) => y.c - x.c);
   const serie = D.anos.map((_, j) => S.serie === "massa" ? tot[40 + j] / 1e9 : (tot[j] ? tot[40 + j] / tot[j] : null));
   const queda = tot[40 + idx(2020)] ? (tot[40 + idx(2021)] - tot[40 + idx(2020)]) / tot[40 + idx(2020)] : 0;
   // faixas de estoque (API)
@@ -1274,6 +1336,12 @@ function abaCarbono() {
       <div class="chart tall"><canvas id="c-cob" aria-label="COS por cobertura"></canvas></div>
     </div>
   </div>
+  ${part.length > 1 ? `<div class="grid1"><div class="card">
+    <div class="card-head"><div><h3>Participação no COS × participação na área, por ${porUF ? "estado" : "bioma"} · ${S.ano} ${src("planilha")}</h3>
+      <p class="sub">Quanto cada ${porUF ? "estado" : "bioma"} guarda do COS do recorte (0–30 cm) e quanto ocupa da área. Rótulos: % do total (Gt · t/ha) e % da área (Mha).</p>
+      <p class="total">Total: <b>${massa(c).join(" ")}</b> em <b>${areaTxt(a)}</b></p></div></div>
+    <div class="chart" style="height:${Math.max(260, 70 + part.length * 46)}px"><canvas id="c-part" aria-label="Participação no COS e na área"></canvas></div>
+  </div></div>` : ""}
   <div class="grid1"><div class="card">
     <div class="card-head"><div><h3>Matriz · cobertura (nível ${S.nivCob}) × ${colBy === "bioma" ? "bioma" : "estado"} · ${S.ano} ${src("planilha")}</h3>
       <p class="sub">Cada célula soma o recorte e só depois divide. Sombreamento na rampa oficial do COS.</p></div>
@@ -1298,6 +1366,11 @@ function abaCarbono() {
     // em t/ha: área (Mha) junto do valor e a média do recorte em linha tracejada, para não ler alto t/ha em área irrisória
     rotulo: S.cobM === "tha" ? (v, k) => `${f1.format(v)} · ${f1.format(ord[k].a / 1e6)} Mha` : null,
     media: S.cobM === "tha" && a ? c / a : null, mediaRot: a ? `média do recorte ${f1.format(c / a)} t/ha` : "" });
+  if (part.length > 1) barrasPar("c-part", { labels: part.map((x) => x.n), unidade: "% do total do recorte",
+    series: [
+      { nome: "% do estoque de COS", unidade: "% do COS", dados: part.map((x) => 100 * x.c / c), cores: part.map((x) => COR_BIOMA[x.n] || css("--accent")) },
+      { nome: "% da área", unidade: "% da área", dados: part.map((x) => 100 * x.a / a), cor: css("--axis") }],
+    rot: (v, k, si) => si === 0 ? `${f1.format(v)}% (${massa(part[k].c).join(" ")} · ${f1.format(part[k].c / part[k].a)} t/ha)` : `${f1.format(v)}% (${areaTxt(part[k].a)})` });
   ligar("s-serie", "serie"); ligar("s-cob", "cobM"); ligar("s-nivcob", "nivCob"); ligar("s-nivmx", "nivCob"); ligar("s-mxcol", "mxCol"); ligar("s-mxm", "mxM");
 }
 
@@ -1317,8 +1390,11 @@ function abaGranulometria() {
   const bTot = bandas ? bandas.reduce((x, y) => x + y, 0) : 0;
   $("panel").innerHTML = `
   <div class="kpis">
-    ${m030 ? Object.values(FRAC).map(([n, q, , cor]) => tile(`${n} · média 0–30 cm`, `${f1.format(m030[q - 1])}<small>%</small>`, "média ponderada pela área (GEE)", cor)).join("") : tile("Granulometria", "—", "sem dados para o recorte")}
+    ${m030 ? Object.values(FRAC).map(([n, q, , cor]) => tile(`${n} · média 0–30 cm`, `${f1.format(m030[q - 1])}<small>%</small>`, `0–10 cm: ${L[0][0] ? f1.format(L[0][q] / L[0][0]) + "%" : "—"} · média ponderada pela área (GEE)`, cor)).join("") : tile("Granulometria", "—", "sem dados para o recorte")}
   </div>
+  <div class="grid1"><div class="card"><div class="card-head"><div><h3>Areia, silte e argila por camada, de 0 a 100 cm ${src("GEE")}</h3>
+    <p class="sub">Teor médio (%) de cada fração em cada camada de 10 cm, ponderado pela área do recorte.</p></div></div>
+    <div class="chart" style="height:620px"><canvas id="c-tresfrac" aria-label="Areia, silte e argila por camada"></canvas></div></div></div>
   <div class="grid1"><div class="card"><div class="card-head"><div><h3>Fração</h3><p class="sub">Escolha a fração para os dois gráficos abaixo.</p></div>
     <div class="detail">${seg("s-frac", Object.entries(FRAC).map(([k, v]) => [k, v[0]]), S.fracao)}</div></div></div></div>
   <div class="grid2">
@@ -1338,6 +1414,10 @@ function abaGranulometria() {
     cores: leg.items.map((x) => x.cor), fmt: (v) => f1.format(v), unidade: "Mha", rotulo: (v) => `${f1.format(v)} Mha · ${pct(100 * v * 1e6 / bTot)}` });
   barras("c-perfil", { labels: D10.map(nomeCamada), valores: perfil, cores: D10.map((cc) => cc === S.camGran ? css("--accent") : corF), fmt: (v) => f1.format(v), unidade: "%",
     rotulo: (v) => f1.format(v) + "%", onClick: (_, el) => { if (el.length) { S.camGran = D10[el[0].index]; renderPainel(); } } });
+  const ORD3 = [["areia", "Areia", 3, "#d67258"], ["argila", "Argila", 1, "#8c3306"], ["silte", "Silte", 2, "#6a8e74"]];
+  barrasPar("c-tresfrac", { labels: D10.map(nomeCamada), unidade: "%", folga: 1.25,
+    series: ORD3.map(([, n, q, cor]) => ({ nome: n, unidade: "% " + n.toLowerCase(), cor, dados: L.map((v) => v[0] ? v[q] / v[0] : null) })),
+    rot: (v) => f1.format(v) + "%" });
   ligar("s-frac", "fracao"); ligar("s-camgran", "camGran");
 }
 
@@ -1360,7 +1440,17 @@ function abaTextura() {
   const thas = M.flatMap((cm) => cm.map((v) => v[0] > 1e4 && v[1] > 0 ? v[1] / v[0] : 0)).filter((v) => v > 0);
   const lo = Math.min(...thas), hi = Math.max(...thas);
   const metr = S.texM === "tha" ? (l) => l.m / l.a : (l) => l.m / 1e9;
+  // participação no COS × na área por grupo textural (0–30 cm), sem fragmentos de rocha e não observado
+  const porG = somaSerie(D.tex.grupo, rs);
+  const gruposP = D.texturas.grupo.map((cl, k) => ({ ...cl, a: porG[k] ? porG[k][i] : 0, m: porG[k] ? porG[k][40 + i] : 0 }))
+    .filter((l) => l.a > 0 && !/Fragmentos|Não Observado/i.test(l.nome)).sort((x, y) => y.a - x.a);
+  const gA = gruposP.reduce((x, l) => x + l.a, 0), gM = gruposP.reduce((x, l) => x + l.m, 0);
   $("panel").innerHTML = `
+  <div class="grid1"><div class="card"><div class="card-head"><div><h3>Participação no COS × participação na área, por grupo textural · ${S.ano} ${src("planilha")}</h3>
+    <p class="sub">Textura de 0–30 cm. Rótulos: % do COS (Gt · t/ha) e % da área com textura mapeada (Mha).</p>
+    <p class="total">Total: <b>${massa(gM).join(" ")}</b> em <b>${areaTxt(gA)}</b> com textura mapeada</p></div></div>
+    <div class="chart" style="height:${70 + gruposP.length * 52}px"><canvas id="c-texpart" aria-label="Participação no COS e na área por grupo textural"></canvas></div></div></div>
+  <div class="grid1" id="frases-cobtex"></div>
   <div class="grid1"><div class="card"><div class="card-head"><div><h3>Nível da textura</h3><p class="sub">Grupo (5 classes), subgrupo (8) ou classe textural (13).</p></div>
     <div class="detail">${seg("s-nivel", NIVEIS, S.nivel)}</div></div></div></div>
   <div class="grid2">
@@ -1391,7 +1481,52 @@ function abaTextura() {
   const ord = [...linhas].sort((x, y) => metr(y) - metr(x));
   barras("c-texcos", { labels: ord.map((l) => l.nome), valores: ord.map(metr), cores: ord.map((l) => l.cor),
     fmt: (v) => S.texM === "tha" ? f1.format(v) : f2.format(v), unidade: S.texM === "tha" ? "t/ha" : "Gt" });
+  barrasPar("c-texpart", { labels: gruposP.map((l) => l.nome), unidade: "% do total do recorte",
+    series: [
+      { nome: "% do estoque de COS", unidade: "% do COS", dados: gruposP.map((l) => 100 * l.m / gM), cores: gruposP.map((l) => l.cor) },
+      { nome: "% da área", unidade: "% da área", dados: gruposP.map((l) => 100 * l.a / gA), cor: css("--axis") }],
+    rot: (v, k, si) => si === 0 ? `${f1.format(v)}% (${massa(gruposP[k].m).join(" ")} · ${f1.format(gruposP[k].m / gruposP[k].a)} t/ha)` : `${f1.format(v)}% (${areaTxt(gruposP[k].a)})` });
+  frasesCoberturaTextura(rs);
   ligar("s-nivel", "nivel"); ligar("s-camtex", "camTex"); ligar("s-texm", "texM"); ligar("s-camnivel", "camNivel");
+}
+
+// destaques de cobertura × textura (slides 17 e 18): frases calculadas para o recorte, a partir dos dados da fábrica
+async function frasesCoberturaTextura(rs) {
+  const alvo = () => $("frases-cobtex");
+  if (!window.FabricaSolo || !FabricaSolo.dados) return;
+  let F;
+  try { F = await FabricaSolo.dados("dados_fabrica.json?v=" + VERSAO_DADOS); } catch { return; }
+  if (!alvo() || !F || !F.texcob) return;
+  const TC = {};
+  for (const r in F.texcob["2"]) { if (!rs.has(+r)) continue; const o = F.texcob["2"][r]; for (const k in o) { const w = TC[k] || (TC[k] = [0, 0]); w[0] += o[k][0]; w[1] += o[k][1]; } }
+  const uso = (c) => { const n = F.cobertura[c].nome, g = F.cobertura[c].grupo; if (n === "Não observado") return null;
+    if (["Pastagem", "Agricultura", "Silvicultura", "Mosaico de Usos"].includes(n)) return n;
+    if (g === "Natural" && n !== "Praia, Duna e Areal") return "Vegetação nativa"; return "Outros usos"; };
+  const linhas = [];
+  ["Muito Argilosa", "Argilosa", "Média", "Arenosa", "Siltosa"].forEach((tn) => {
+    const t = F.texturas.findIndex((x) => x.nome === tn), por = {};
+    for (const k in TC) { const [tt, c] = k.split("|").map(Number); if (tt !== t) continue; const u = uso(c); if (!u) continue; const w = por[u] || (por[u] = [0, 0]); w[0] += TC[k][0]; w[1] += TC[k][1]; }
+    const t85 = Object.values(por).reduce((x, w) => x + w[0], 0), t24 = Object.values(por).reduce((x, w) => x + w[1], 0);
+    if (t24 < 1e4) return;
+    const p = (u, j) => por[u] ? 100 * por[u][j] / (j ? t24 : t85) : 0;
+    const usosA = ["Pastagem", "Agricultura", "Silvicultura", "Mosaico de Usos"];
+    const maior = usosA.map((u) => [u, p(u, 1) - p(u, 0)]).sort((x, y) => y[1] - x[1])[0];
+    const nat85 = p("Vegetação nativa", 0), nat24 = p("Vegetação nativa", 1);
+    const frase = Math.abs(nat24 - nat85) < 1
+      ? `a vegetação nativa se manteve em ${f0.format(nat24)}% da área`
+      : `a vegetação nativa ${nat24 < nat85 ? "recuou" : "avançou"} de ${f0.format(nat85)}% para ${f0.format(nat24)}%` +
+        (maior && maior[1] >= 1 ? `; ${maior[0].toLowerCase()} foi de ${f0.format(p(maior[0], 0))}% para ${f0.format(p(maior[0], 1))}%` : "");
+    linhas.push({ tn, t85, t24, nat85, nat24, usos: usosA.map((u) => [u, p(u, 0), p(u, 1)]), frase });
+  });
+  if (!alvo() || !linhas.length) return;
+  alvo().innerHTML = `<div class="card"><div class="card-head"><div><h3>Cobertura e uso por grupo textural · 1985 → 2024 ${src("planilha")}</h3>
+    <p class="sub">Frases calculadas para o recorte (${esc(nomeRecorte())}), em % da área de cada grupo textural de 0–30 cm. Vegetação nativa = classes naturais da Coleção 10, exceto praia, duna e areal.</p></div></div>
+    <ul style="margin:0 0 10px;padding-left:18px;display:grid;gap:4px">${linhas.map((l) => `<li><b>${esc(l.tn)}</b> (${areaTxt(l.t24)}): ${l.frase}.</li>`).join("")}</ul>
+    <div class="scroll"><table><thead><tr><th>Grupo textural</th><th>Área 2024</th><th>Nativa 1985</th><th>Nativa 2024</th>${["Pastagem", "Agricultura", "Silvicultura", "Mosaico"].map((u) => `<th>${u} 85</th><th>${u} 24</th>`).join("")}</tr></thead><tbody>
+    ${linhas.map((l) => `<tr><td>${esc(l.tn)}</td><td>${f1.format(l.t24 / 1e6)} Mha</td><td>${f1.format(l.nat85)}%</td><td>${f1.format(l.nat24)}%</td>${l.usos.map(([, x, y]) => `<td>${f1.format(x)}%</td><td>${f1.format(y)}%</td>`).join("")}</tr>`).join("")}
+    </tbody></table></div></div>`;
+  alvo().querySelector(".card").dataset.metodo = "Área de cada uso ÷ área total do grupo textural no ano (1985 e 2024), cobertura col. 10 nível 2";
+  decorarDownloads();
 }
 
 // ================= Pedregosidade =================
@@ -1409,12 +1544,15 @@ function abaPedregosidade() {
   for (const k in D.mun) { if (!rs.has(regDe(k))) continue; const n = k.slice(k.indexOf("|") + 1), w = D.mun[k]; const o = mun.get(n) || { n, a: 0, m: 0 }; o.a += w[j]; o.m += w[j + 1]; mun.set(n, o); }
   const top = [...mun.values()].filter((x) => x.a > 0).sort((x, y) => y.a - x.a).slice(0, 15);
   const cor = S.ped === "50" ? "#c300a9" : "#56008f";
+  const ate100 = (t) => { let at = 0, to = 0; for (const k in D.ped[t]) { if (!rs.has(regDe(k))) continue; const f = +k.split("|")[1], x = D.ped[t][k][0]; to += x; if (F[f] !== "100cm") at += x; } return [at, to]; };
+  const [dA, dT] = ate100("dominante"), [eA, eT] = ate100("extrema");
   $("panel").innerHTML = `
   <div class="grid1"><div class="card"><div class="card-head"><div><h3>Limiar de fragmentos grossos</h3>
     <p class="sub">Dominante: mais de 50% do volume do solo. Extrema: mais de 90%. Mapa de 2024, com o perfil avaliado até 100 cm.</p></div>
     <div class="detail">${seg("s-ped", [["50", "Dominante (> 50%)"], ["90", "Extrema (> 90%)"]], S.ped)}</div></div></div></div>
   <div class="kpis">
-    ${tile("Área com o limiar até 100 cm", `${area(atA)[0]}<small>${area(atA)[1]}</small>`, `${pct(100 * atA / totA)} da área avaliada · planilha, 2024`, cor, true)}
+    ${tile("Dominante (> 50%) até 100 cm", `${area(dA)[0]}<small>${area(dA)[1]}</small>`, `${pct(100 * dA / dT)} da área avaliada · 2024`, "#c300a9", S.ped === "50")}
+    ${tile("Extrema (> 90%) até 100 cm", `${area(eA)[0]}<small>${area(eA)[1]}</small>`, `${pct(100 * eA / eT)} da área avaliada · 2024`, "#56008f", S.ped === "90")}
     ${tile("COS nessa área · 0–30 cm", `${massa(atP[1])[0]}<small>${massa(atP[1])[1]}</small>`, atP[0] ? `${f1.format(atP[1] / atP[0])} t/ha · planilha, 2024` : "planilha, 2024")}
     ${tile("Sem o limiar no 1º metro", `${pct(100 * cens / totA)}`, "valor censurado em 100 cm")}
   </div>
@@ -1672,8 +1810,21 @@ async function gerarGif(st) {
 }
 
 // ================= Fontes e método =================
+// números da apresentação do Workshop do Cerrado (nov/2026), slide 9: amostras do SoilData usadas nos modelos
+const SOILDATA = { biomas: ["Amazônia", "Caatinga", "Cerrado", "Mata Atlântica", "Pampa", "Pantanal"],
+  cos: [10978, 2246, 4176, 7795, 1890, 980], gran: [25992, 4912, 8618, 14328, 5738, 1280] };
 function abaMetodo() {
-  $("panel").innerHTML = `<div class="grid1"><div class="card method">
+  const tc = SOILDATA.cos.reduce((x, y) => x + y, 0), tg = SOILDATA.gran.reduce((x, y) => x + y, 0);
+  $("panel").innerHTML = `
+  <div class="grid1"><div class="card"><div class="card-head"><div><h3>Amostras de solo do SoilData por bioma ${src("SoilData")}</h3>
+    <p class="sub">Pontos usados para treinar os modelos da Coleção 3: dados de estoque de carbono orgânico e de tamanho de partícula (areia, silte, argila e fragmentos grossos). Números do Brasil inteiro; não mudam com o filtro. Base: <a href="https://soildata.mapbiomas.org" target="_blank" rel="noopener">soildata.mapbiomas.org</a>.</p>
+    <p class="total">Total: <b>${f0.format(tc)}</b> amostras de COS · <b>${f0.format(tg)}</b> de tamanho de partícula</p></div></div>
+    <div class="chart" style="height:380px"><canvas id="c-soildata" aria-label="Amostras do SoilData por bioma"></canvas></div></div></div>`;
+  barrasPar("c-soildata", { labels: SOILDATA.biomas, unidade: "amostras",
+    series: [{ nome: "Estoque de carbono orgânico", unidade: "amostras de COS", dados: SOILDATA.cos, cor: "#b3261e" },
+             { nome: "Tamanho de partícula", unidade: "amostras de granulometria", dados: SOILDATA.gran, cor: "#1f4e9c" }],
+    rot: (v, k, si) => `${f0.format(v)} (${f1.format(100 * v / (si ? tg : tc))}%)` });
+  $("panel").insertAdjacentHTML("beforeend", `<div class="grid1"><div class="card method">
     <h3>De onde vem cada número</h3>
     <dl>
       <dt>API MapBiomas</dt><dd>Áreas por classe da legenda oficial de cada produto, consultadas na API pública da Plataforma
@@ -1684,8 +1835,9 @@ function abaMetodo() {
       <dt>Google Earth Engine</dt><dd>Teor médio (%) de argila, silte e areia por camada, ponderado pela área (assets públicos <code>mapbiomas_brazil_collection3_soil_*_fraction_v1</code>, escala de 300 m). A API e a planilha não trazem médias.</dd>
       <dt>Fábrica de GIFs</dt><dd>Mapas e contornos pedidos ao vivo à API (<code>/maps/map</code>, <code>/territories/geometry</code>). Funciona na versão publicada no GitHub; o visualizador de artefatos do Claude bloqueia o acesso a sites externos.</dd>
       <dt>Conferência</dt><dd>Brasil 2024: 37,51 Gt de COS em 850,9 Mha, 44,1 t/ha, igual ao painel oficial. Cerrado 2024: 7,90 Gt, 198,45 Mha, 39,8 t/ha.</dd>
+      <dt>Amostras</dt><dd>Contagens de amostras do SoilData por bioma tiradas da apresentação do V Workshop de Especialistas do Cerrado (novembro de 2026).</dd>
       <dt>Avisos</dt><dd>A Coleção 3 é beta. A nota informativa registra um artefato no fim da série de COS (queda artificial). Na pedregosidade, a classe "100 cm" significa que o limiar não foi atingido no primeiro metro (valor censurado).</dd>
-    </dl></div></div>`;
+    </dl></div></div>`);
 }
 
 // ---------- render ----------
@@ -1745,16 +1897,21 @@ function tituloCartao(card) {
 const FONTES = {
   "planilha": "Planilha oficial estatisticas - MBSOLO3 (MapBiomas Solo Col. 3 beta; uso e cobertura Col. 10)",
   "API MapBiomas": "API pública da Plataforma MapBiomas, /statistics/area (MapBiomas Solo Col. 3 beta)",
+  "SoilData": "Repositório SoilData (soildata.mapbiomas.org); números da apresentação do V Workshop de Especialistas do Cerrado, nov/2026",
   "GEE": "Google Earth Engine, assets públicos mapbiomas_brazil_collection3_soil_*_fraction_v1, escala de 300 m",
 };
 const METODOS = {
   "c-serie": () => S.serie === "massa" ? "Massa de COS 0-30 cm = soma do COS dos pixels do recorte" : "Estoque médio = soma do COS ÷ soma da área do recorte (média ponderada pela área)",
   "c-faixas": () => "Área (Mha) dos pixels em cada faixa de estoque de COS 0-30 cm, legenda oficial da Plataforma",
-  "c-cob": () => "Nível " + S.nivCob + " da legenda de cobertura (Col. 10). " + ({ tha: "Estoque médio por classe = soma do COS ÷ soma da área da classe no recorte", massa: "Soma do COS 0-30 cm da classe no recorte", area: "Soma da área da classe no recorte" }[S.cobM]),
+  "c-part": () => "Participação = soma do COS (ou da área) do bioma/estado ÷ soma do recorte; t/ha = soma do COS ÷ soma da área",
+  "c-cob": () => "Classes com menos de 1% da área do recorte somadas em Outros. Nível " + S.nivCob + " da legenda de cobertura (Col. 10). " + ({ tha: "Estoque médio por classe = soma do COS ÷ soma da área da classe no recorte", massa: "Soma do COS 0-30 cm da classe no recorte", area: "Soma da área da classe no recorte" }[S.cobM]),
   "c-bandas": () => "Área (Mha) por faixa de teor da fração na camada, legenda oficial da Plataforma",
+  "c-tresfrac": () => "Teor médio = soma(teor × área) ÷ soma(área), por camada de 10 cm e por fração",
   "c-perfil": () => "Teor médio = soma(teor × área) ÷ soma(área), por camada de 10 cm",
   "c-texarea": () => "Área (Mha) por classe textural na camada, legenda oficial da Plataforma",
+  "c-texpart": () => "Participação = soma do COS (ou da área) do grupo ÷ soma dos cinco grupos texturais do recorte; t/ha = soma do COS ÷ soma da área",
   "c-texcos": () => S.texM === "tha" ? "Estoque médio = soma do COS 0-30 cm ÷ soma da área de cada classe (textura de 0-30 cm)" : "Soma do COS 0-30 cm de cada classe (textura de 0-30 cm)",
+  "c-soildata": () => "Contagem de amostras por bioma no repositório SoilData (Brasil inteiro, sem filtro)",
   "c-ped": () => "Área por faixa de profundidade em que o limiar de fragmentos grossos é atingido (2024)",
 };
 const fonteCartao = (card) => FONTES[(card.querySelector(".src") || {}).textContent] || "MapBiomas Solo Col. 3 (beta)";
@@ -1766,9 +1923,15 @@ const cabecalho = (titulo, unidade, metodo, fonte) => [["# " + titulo], ["# reco
 function csvGrafico(ch, titulo, metodo, fonte) {
   const un = ch.$unidade || "valor";
   const linhas = cabecalho(titulo, un, metodo, fonte);
+  const ds = ch.data.datasets;
+  if (ds.length > 1) {
+    linhas.push(["categoria", ...ds.map((d) => (d.label || "série") + (ch.$unidades ? " (" + ch.$unidades[ds.indexOf(d)] + ")" : ""))]);
+    ch.data.labels.forEach((l, i) => linhas.push([String(l), ...ds.map((d) => d.data[i])]));
+    return csvDe(linhas);
+  }
   linhas.push(["categoria", un, "cor"]);
-  const cores = ch.data.datasets[0].backgroundColor;
-  ch.data.labels.forEach((l, i) => linhas.push([String(l), ch.data.datasets[0].data[i], Array.isArray(cores) ? cores[i] : cores]));
+  const cores = ds[0].backgroundColor;
+  ch.data.labels.forEach((l, i) => linhas.push([String(l), ds[0].data[i], Array.isArray(cores) ? cores[i] : cores]));
   return csvDe(linhas);
 }
 function csvTabela(t, titulo, metodo, fonte) {
