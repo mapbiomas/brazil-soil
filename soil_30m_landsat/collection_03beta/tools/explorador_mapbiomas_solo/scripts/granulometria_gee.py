@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import ee
 
-ee.Initialize(project="ee-geomapeamentoipam")
+ee.Initialize(project="mapbiomas-brazil")
 ROOT = "projects/mapbiomas-public/assets/brazil/soil/collection3/mapbiomas_brazil_collection3_soil_"
 CAMADAS = ["000_010", "010_020", "020_030", "030_040", "040_050",
            "050_060", "060_070", "070_080", "080_090", "090_100"]
