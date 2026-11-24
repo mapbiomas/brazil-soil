@@ -309,6 +309,7 @@ footer { padding-block: 20px 40px; font-size: 0.8rem; color: var(--muted); }
 /* Fábrica de factsheets do MapBiomas Solo col. 3, como módulo encaixável.
    Uso:  FabricaSolo.montar(elemento, { recorte: () => ({ bioma: "2", uf: "GO" }), dadosUrl: "dados_fabrica.json", logo: imgElement })
          FabricaSolo.atualizar()          // depois de mudar o bioma ou o estado na página hospedeira
+         FabricaSolo.desmontar()          // ao sair da guia: destrói os gráficos e interrompe os mapas
          FabricaSolo.dados()              // Promise com dados_fabrica.json (biomas, ufs, regioes…)
    bioma = índice em dados.biomas como texto ("" = todos); uf = sigla ("" = todos).
    Requer Chart.js 4 e chartjs-plugin-datalabels (globais Chart e ChartDataLabels) e fabrica.css.
@@ -938,7 +939,15 @@ function montar(el, opt = {}) {
     const f = q("fs-folhas"); if (f) f.innerHTML = `<p class="fs-note">Não foi possível carregar <code>${esc(OPT.dadosUrl || "dados_fabrica.json")}</code> (${esc(e.message)}). Abra a página por um servidor (GitHub Pages ou <code>python -m http.server</code>).</p>`;
   });
 }
-return { montar, atualizar: render, dados, nomeRecorte: () => (D ? nomeRecorte() : "Brasil") };
+// sai da guia: destrói os gráficos, interrompe os mapas pendentes e solta o contêiner
+// (os ouvintes de clique ficam no .fs-root, que some junto com o HTML do contêiner)
+function desmontar() {
+  geracao++;
+  limpar();
+  if (EL && EL.isConnected && EL.querySelector(".fs-root")) EL.innerHTML = "";
+  EL = null;
+}
+return { montar, atualizar: render, desmontar, dados, nomeRecorte: () => (D ? nomeRecorte() : "Brasil") };
 })();
 /* FABRICA_JS_FIM */
 </script>
@@ -1564,7 +1573,12 @@ const abaFabrica = () => {
   FabricaSolo.montar($("panel"), { recorte: () => ({ bioma: S.bioma, uf: S.uf }), dadosUrl: "dados_fabrica.json", logo: $("logo-img") });
 };
 const ABAS = { carbono: abaCarbono, granulometria: abaGranulometria, textura: abaTextura, pedregosidade: abaPedregosidade, fabrica: abaFabrica, gif: abaGif, metodo: abaMetodo };
-function renderPainel() { Object.keys(charts).forEach((k) => { charts[k].destroy(); delete charts[k]; }); ABAS[S.tab](); decorarDownloads(); }
+function renderPainel() {
+  Object.keys(charts).forEach((k) => { charts[k].destroy(); delete charts[k]; });
+  // ao sair da guia da fábrica, o módulo destrói os próprios gráficos e interrompe os mapas
+  if (S.tab !== "fabrica" && window.FabricaSolo && FabricaSolo.desmontar && $("panel").querySelector(".fs-root")) FabricaSolo.desmontar();
+  ABAS[S.tab](); decorarDownloads();
+}
 
 // ---------- botões discretos de download (PNG e CSV) em todo gráfico e tabela ----------
 let DL = null; // capability "downloads" do visualizador de artefatos; fora dele, link <a download>

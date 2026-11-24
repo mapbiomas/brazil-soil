@@ -1,6 +1,7 @@
 /* Fábrica de factsheets do MapBiomas Solo col. 3, como módulo encaixável.
    Uso:  FabricaSolo.montar(elemento, { recorte: () => ({ bioma: "2", uf: "GO" }), dadosUrl: "dados_fabrica.json", logo: imgElement })
          FabricaSolo.atualizar()          // depois de mudar o bioma ou o estado na página hospedeira
+         FabricaSolo.desmontar()          // ao sair da guia: destrói os gráficos e interrompe os mapas
          FabricaSolo.dados()              // Promise com dados_fabrica.json (biomas, ufs, regioes…)
    bioma = índice em dados.biomas como texto ("" = todos); uf = sigla ("" = todos).
    Requer Chart.js 4 e chartjs-plugin-datalabels (globais Chart e ChartDataLabels) e fabrica.css.
@@ -630,5 +631,13 @@ function montar(el, opt = {}) {
     const f = q("fs-folhas"); if (f) f.innerHTML = `<p class="fs-note">Não foi possível carregar <code>${esc(OPT.dadosUrl || "dados_fabrica.json")}</code> (${esc(e.message)}). Abra a página por um servidor (GitHub Pages ou <code>python -m http.server</code>).</p>`;
   });
 }
-return { montar, atualizar: render, dados, nomeRecorte: () => (D ? nomeRecorte() : "Brasil") };
+// sai da guia: destrói os gráficos, interrompe os mapas pendentes e solta o contêiner
+// (os ouvintes de clique ficam no .fs-root, que some junto com o HTML do contêiner)
+function desmontar() {
+  geracao++;
+  limpar();
+  if (EL && EL.isConnected && EL.querySelector(".fs-root")) EL.innerHTML = "";
+  EL = null;
+}
+return { montar, atualizar: render, desmontar, dados, nomeRecorte: () => (D ? nomeRecorte() : "Brasil") };
 })();
