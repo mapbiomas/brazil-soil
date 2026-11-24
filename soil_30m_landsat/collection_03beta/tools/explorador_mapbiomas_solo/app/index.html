@@ -168,6 +168,10 @@ progress { width: 100%; accent-color: var(--accent); }
 .method dl { display: grid; grid-template-columns: minmax(140px, 220px) minmax(0, 1fr); gap: 8px 16px; margin: 0; font-size: 0.9rem; }
 .method dt { font-weight: 700; } .method dd { margin: 0; color: var(--ink-2); }
 @media (max-width: 640px) { .method dl { grid-template-columns: minmax(0, 1fr); } }
+.dl { display: inline-flex; gap: 4px; margin-left: auto; }
+.dl button { border: 1px solid var(--grid); background: transparent; color: var(--muted); border-radius: 6px; padding: 2px 7px; font: 600 0.64rem var(--mono); letter-spacing: 0.05em; cursor: pointer; opacity: 0.75; }
+.dl button:hover { opacity: 1; color: var(--accent); border-color: var(--accent); }
+.card-head .dl { align-self: flex-start; }
 footer { padding-block: 20px 40px; font-size: 0.8rem; color: var(--muted); }
 .loading { padding: 40px 0; color: var(--muted); }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
@@ -360,6 +364,7 @@ function barras(id, o) {
             y: eixo(o.unidade || "", { beginAtZero: true, max: niceMax(max * (o.labels.length > 16 ? 1.2 : 1.12)) }) },
     },
   });
+  charts[id].$unidade = o.unidade; // usada no CSV
 }
 function niceMax(v) { if (!(v > 0)) return 1; const e = 10 ** Math.floor(Math.log10(v)), m = v / e; return (m <= 1 ? 1 : m <= 1.5 ? 1.5 : m <= 2 ? 2 : m <= 3 ? 3 : m <= 4 ? 4 : m <= 5 ? 5 : m <= 6 ? 6 : m <= 8 ? 8 : 10) * e; }
 function seg(id, opcoes, atual) {
@@ -685,7 +690,8 @@ function abaGif() {
 function mostrarGif() {
   const r = G.resultado;
   $("g-resultado").innerHTML = `<figure class="gif-preview"><img src="${r.url}" alt="${esc(r.titulo)}"><figcaption>${esc(r.titulo)} · ${r.quadros} quadros · ${f1.format(r.bytes / 1e6)} MB</figcaption></figure>
-    <div class="gif-acoes"><a class="btn primary" href="${r.url}" download="${esc(r.nome)}">⬇ Baixar GIF</a></div>`;
+    <div class="gif-acoes"><button type="button" class="btn primary" id="g-baixar">⬇ Baixar GIF</button></div>`;
+  $("g-baixar").addEventListener("click", () => salvarArquivo(r.nome, r.blob));
 }
 const lonX = (lon) => (lon + 180) / 360;
 const latY = (lat) => { const r = Math.max(-85, Math.min(85, lat)) * Math.PI / 180; return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2; };
@@ -812,7 +818,7 @@ async function gerarGif(st) {
     const blob = new Blob([gif.bytes()], { type: "image/gif" });
     if (G.resultado?.url) URL.revokeObjectURL(G.resultado.url);
     const suf = `${rotQ(quadros[0])}-${rotQ(quadros[quadros.length - 1])}`;
-    G.resultado = { url: URL.createObjectURL(blob), bytes: blob.size, quadros: quadros.length, titulo: `${titulo} · ${terrNome}`,
+    G.resultado = { url: URL.createObjectURL(blob), blob, bytes: blob.size, quadros: quadros.length, titulo: `${titulo} · ${terrNome}`,
       nome: `mapbiomas_solo_${seguro(p.n)}_${seguro(terrNome)}_${seguro(suf)}.gif` };
     if (vivo()) { mostrarGif(); st("Pronto! Veja a prévia e baixe o GIF."); }
   } catch (err) {
@@ -844,7 +850,77 @@ function abaMetodo() {
 // ---------- render ----------
 let R = null;
 const ABAS = { carbono: abaCarbono, granulometria: abaGranulometria, textura: abaTextura, pedregosidade: abaPedregosidade, gif: abaGif, metodo: abaMetodo };
-function renderPainel() { Object.keys(charts).forEach((k) => { charts[k].destroy(); delete charts[k]; }); ABAS[S.tab](); }
+function renderPainel() { Object.keys(charts).forEach((k) => { charts[k].destroy(); delete charts[k]; }); ABAS[S.tab](); decorarDownloads(); }
+
+// ---------- botões discretos de download (PNG e CSV) em todo gráfico e tabela ----------
+let DL = null; // capability "downloads" do visualizador de artefatos; fora dele, link <a download>
+(async () => { try { DL = window.claude && window.claude.use ? await window.claude.use("downloads") : null; } catch { DL = null; } })();
+async function salvarArquivo(nome, data, tipo) {
+  if (DL) {
+    try { await DL.save({ filename: nome, data }); return; }
+    catch (e) { if (e && ["declined", "rate_limited", "too_large"].includes(e.code)) return; }
+  }
+  const blob = data instanceof Blob ? data : new Blob([data], { type: tipo || "application/octet-stream" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = nome;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+}
+const nomeArq = (titulo, ext) => `mapbiomas_solo_${seguro(titulo)}_${seguro(nomeRecorte())}.${ext}`;
+const numCsv = (v) => typeof v === "number" && isFinite(v) ? String(+v.toFixed(6)).replace(".", ",") : (v == null ? "" : String(v));
+function csvDe(linhas) {
+  const cel = (x) => { const t = numCsv(x); return /[";\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
+  return "\ufeff" + linhas.map((l) => l.map(cel).join(";")).join("\r\n") + "\r\n";
+}
+function tituloCartao(card) {
+  const h = card.querySelector("h3"); if (!h) return "grafico";
+  const c = h.cloneNode(true); c.querySelectorAll(".src").forEach((x) => x.remove());
+  return c.textContent.replace(/\s+/g, " ").trim();
+}
+function csvGrafico(ch, titulo) {
+  const un = ch.$unidade || "valor";
+  const linhas = [["# " + titulo + " · " + nomeRecorte()], ["categoria", un]];
+  ch.data.labels.forEach((l, i) => linhas.push([String(l), ch.data.datasets[0].data[i]]));
+  return csvDe(linhas);
+}
+function csvTabela(t, titulo) {
+  const linhas = [["# " + titulo + " · " + nomeRecorte()]];
+  t.querySelectorAll("tr").forEach((tr) => linhas.push([...tr.children].map((c) => {
+    const x = c.textContent.replace(/\s+/g, " ").trim();
+    return x === "·" || x === "—" ? "" : x;
+  })));
+  return csvDe(linhas);
+}
+async function pngGrafico(canvas, titulo) {
+  const r = window.devicePixelRatio || 1, faixa = Math.round(36 * r), pad = Math.round(12 * r);
+  const c = Object.assign(document.createElement("canvas"), { width: canvas.width + 2 * pad, height: canvas.height + faixa + 2 * pad });
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = css("--surface") || "#ffffff"; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.fillStyle = css("--ink") || "#2a2119"; ctx.font = `600 ${Math.round(15 * r)}px "Source Sans 3", sans-serif`; ctx.textBaseline = "top";
+  ctx.fillText(`${titulo} · ${nomeRecorte()}`, pad, pad, c.width - 2 * pad);
+  ctx.fillStyle = css("--muted") || "#7d6b58"; ctx.font = `500 ${Math.round(11 * r)}px "Source Sans 3", sans-serif`;
+  ctx.fillText("MapBiomas Solo · Coleção 3 (beta)", pad, pad + Math.round(19 * r), c.width - 2 * pad);
+  ctx.drawImage(canvas, pad, pad + faixa);
+  return new Promise((res) => c.toBlob(res, "image/png"));
+}
+function decorarDownloads() {
+  document.querySelectorAll("#panel .card").forEach((card) => {
+    const canvas = card.querySelector("canvas"), tabela = card.querySelector("table");
+    if ((!canvas && !tabela) || card.querySelector(".dl")) return;
+    const titulo = tituloCartao(card);
+    const barra = document.createElement("div");
+    barra.className = "dl"; barra.setAttribute("role", "group"); barra.setAttribute("aria-label", "Baixar dados");
+    const botao = (rot, dica, fn) => { const b = document.createElement("button"); b.type = "button"; b.textContent = rot; b.title = dica; b.addEventListener("click", fn); barra.appendChild(b); };
+    if (canvas) {
+      const ch = Object.values(charts).find((x) => x.canvas === canvas);
+      botao("PNG", "Baixar o gráfico em PNG", async () => salvarArquivo(nomeArq(titulo, "png"), await pngGrafico(canvas, titulo), "image/png"));
+      if (ch) botao("CSV", "Baixar os dados do gráfico em CSV", () => salvarArquivo(nomeArq(titulo, "csv"), csvGrafico(ch, titulo), "text/csv"));
+    }
+    if (tabela) botao(canvas ? "CSV tabela" : "CSV", "Baixar a tabela em CSV", () => salvarArquivo(nomeArq(titulo + (canvas ? "_tabela" : ""), "csv"), csvTabela(tabela, titulo), "text/csv"));
+    const head = card.querySelector(".card-head");
+    if (head) head.appendChild(barra); else card.prepend(barra);
+  });
+}
 function render() {
   const rs = regioesSel();
   $("titulo-recorte").textContent = nomeRecorte();
