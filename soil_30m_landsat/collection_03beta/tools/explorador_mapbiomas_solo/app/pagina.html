@@ -608,9 +608,9 @@ function f10(rs) {
     }));
   });
   const ctrl = hospedeiro ? "" : `<div class="fs-ctrl"><span class="fs-flabel">Legenda de cobertura</span>${seg("fs-s-nivel", NIVEIS, nv)}</div>`;
-  return ctrl + `<div class="fs-grid fs-g2">${cMapa("cob", { titulo: "Cobertura e uso da terra · 2024", sub: "A Plataforma serve hoje a Coleção 11; o factsheet usa a Coleção 10", k: "coverage_coverage-30m-droufo", legendId: "5837836a-c21c-4109-b3ef-5d8eb4ac1dc7", prm: { year: "2024" } })}
-     ${cards[0] || ""}</div>
-     <div class="fs-grid fs-gm">${cards.slice(1).join("")}</div>`;
+  const mapasCob = ["1985", "2024"].map((a) => cMapa("cob-" + a, { titulo: `Cobertura e uso da terra · ${a}`, sub: "Coleção 11 da Plataforma (o factsheet usa a Coleção 10)", k: "coverage_coverage-30m-droufo", legendId: "5837836a-c21c-4109-b3ef-5d8eb4ac1dc7", prm: { year: a } })).join("");
+  return ctrl + `<div class="fs-grid fs-g2">${mapasCob}</div>
+     <div class="fs-grid fs-gm">${cards.join("")}</div>`;
 }
 
 // Folha 11 · mapas do grupo textural em três camadas (as áreas por camada já estão no Explorador)
@@ -641,7 +641,8 @@ function f12(rs) {
     tile("Massa em formação florestal", `${massa(ff)[0]}<small>${massa(ff)[1]}</small>`, pct(100 * ff / c) + " do COS do recorte", "#1f8d49") +
     tile("Massa na agricultura", `${massa(ag)[0]}<small>${massa(ag)[1]}</small>`, pct(100 * ag / c) + " do COS do recorte", "#c27ba0") + faixa;
   return kpis(tiles, "Planilha") +
-    `<div class="fs-grid fs-g2">${cMapa("cos12", { titulo: "Estoque de COS · 2024", sub: "t/ha, 0–30 cm", k: "soil_soil_organic_carbon_stock", prm: { year: "2024" } })}<div class="fs-grid">${f13()}</div></div>`;
+    `<div class="fs-grid fs-g2">${["1985", "2024"].map((a) => cMapa("cos12-" + a, { titulo: `Estoque de COS · ${a}`, sub: "t/ha, 0–30 cm", k: "soil_soil_organic_carbon_stock", prm: { year: a } })).join("")}</div>
+     <div class="fs-grid fs-g2">${f13()}</div>`;
 }
 
 // Folha 13 · COS por bioma, com a linha do Brasil. Com um estado escolhido, os biomas daquele estado;
@@ -1060,7 +1061,7 @@ return { montarAba, montar, atualizar: render, desmontar, dados, abas: Object.ke
 const $ = (id) => document.getElementById(id);
 let D = null, A = null;
 // muda a cada atualização dos dados, para o navegador não usar uma cópia antiga do cache
-const VERSAO_DADOS = "2026-11-24-workshop";   // D = planilha (dados.json) · A = API (dados_api.json)
+const VERSAO_DADOS = "2026-11-24-mapas1985";   // D = planilha (dados.json) · A = API (dados_api.json)
 const S = { bioma: "", uf: "", ano: 2024, tab: "carbono",
   serie: "massa", cobM: "tha", nivCob: "2", mxCol: "auto", mxM: "tha",
   fracao: "argila", camGran: "000_010", nivel: "grupo", camTex: "000_030", texM: "tha", camNivel: "grupo", ped: "50" };
