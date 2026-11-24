@@ -17,7 +17,8 @@ Página publicada: https://mapbiomas.github.io/brazil-soil/soil_30m_landsat/coll
 - `scripts/agregar_planilha.py` – lê os CSVs da planilha oficial "estatisticas - MBSOLO3" e gera `dados.json`.
 - `scripts/baixar_api_mapbiomas.py` – estatísticas de área por classe de todos os produtos na API pública da Plataforma MapBiomas → `app/dados_api.json`.
 - `scripts/granulometria_gee.py` – teores médios de argila, silte e areia por bioma × UF no Google Earth Engine (nem a API nem a planilha trazem médias).
-- `scripts/montar_index.py` – gera `index.html` a partir de `pagina.html`.
+- `app/fabrica/` – módulo da Fábrica de factsheets (`fabrica.js` expõe `window.FabricaSolo`; `fabrica.css` com prefixo `fs-`), com os gráficos e mapas do factsheet oficial do Solo Col. 3; dados em `app/dados_fabrica.json`.
+- `scripts/montar_index.py` – embute o módulo da fábrica em `pagina.html` (o artefato do Claude só aceita scripts de CDNs) e gera `index.html`.
 
 ## Atualizar
 
