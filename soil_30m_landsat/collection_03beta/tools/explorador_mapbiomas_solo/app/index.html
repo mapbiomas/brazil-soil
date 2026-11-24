@@ -944,9 +944,11 @@ return { montarAba, montar, atualizar: render, desmontar, dados, abas: Object.ke
 (() => {
 "use strict";
 const $ = (id) => document.getElementById(id);
-let D = null, A = null;   // D = planilha (dados.json) · A = API (dados_api.json)
+let D = null, A = null;
+// muda a cada atualização dos dados, para o navegador não usar uma cópia antiga do cache
+const VERSAO_DADOS = "2026-11-24-niveis-b";   // D = planilha (dados.json) · A = API (dados_api.json)
 const S = { bioma: "", uf: "", ano: 2024, tab: "carbono",
-  serie: "massa", cobM: "tha", mxCol: "auto", mxM: "tha",
+  serie: "massa", cobM: "tha", nivCob: "2", mxCol: "auto", mxM: "tha",
   fracao: "argila", camGran: "000_010", nivel: "grupo", camTex: "000_030", texM: "tha", camNivel: "grupo", ped: "50" };
 const charts = {};
 
@@ -1038,6 +1040,19 @@ function eixo(t, o = {}) {
   return Object.assign({ grid: { color: css("--grid") }, border: { color: css("--axis") }, ticks: { color: css("--muted") },
     title: t ? { display: true, text: t, color: css("--muted"), font: { size: 11, weight: 600 } } : { display: false } }, o);
 }
+// linha tracejada da média do recorte, desenhada atrás das barras (opção "media" de barras())
+const linhaMedia = {
+  id: "linhaMedia",
+  beforeDatasetsDraw(ch) {
+    const v = ch.$media; if (v == null || !isFinite(v)) return;
+    const hz = ch.options.indexAxis === "y", sc = hz ? ch.scales.x : ch.scales.y, a = ch.chartArea, p = sc.getPixelForValue(v), ctx = ch.ctx;
+    ctx.save(); ctx.setLineDash([5, 4]); ctx.strokeStyle = css("--ink-2"); ctx.lineWidth = 1.3;
+    ctx.beginPath(); if (hz) { ctx.moveTo(p, a.top); ctx.lineTo(p, a.bottom); } else { ctx.moveTo(a.left, p); ctx.lineTo(a.right, p); } ctx.stroke();
+    ctx.setLineDash([]); ctx.fillStyle = css("--ink-2"); ctx.font = `600 11px "Source Sans 3", sans-serif`; ctx.textBaseline = "bottom";
+    ctx.fillText(ch.$mediaRot || "", hz ? p + 4 : a.left + 4, hz ? a.top + 12 : p - 3);
+    ctx.restore();
+  },
+};
 /* barras(id, {labels, valores, cores, fmt, unidade, horizontal, destaque, onClick, rotulo}) */
 function barras(id, o) {
   if (charts[id]) charts[id].destroy();
@@ -1049,7 +1064,7 @@ function barras(id, o) {
   const max = Math.max(...o.valores.filter((v) => v != null), 0);
   charts[id] = new Chart(el, {
     type: "bar",
-    plugins: [ChartDataLabels],
+    plugins: [ChartDataLabels, linhaMedia],
     data: { labels: o.labels, datasets: [{ data: o.valores, backgroundColor: o.cores, borderColor: css("--seam"), borderWidth: 1, borderRadius: 3, maxBarThickness: 46 }] },
     options: {
       responsive: true, maintainAspectRatio: false, animation: false, indexAxis: hz ? "y" : "x",
@@ -1072,6 +1087,7 @@ function barras(id, o) {
     },
   });
   charts[id].$unidade = o.unidade; // usada no CSV
+  if (o.media != null) { charts[id].$media = o.media; charts[id].$mediaRot = o.mediaRot || ""; charts[id].update("none"); }
 }
 function niceMax(v) { if (!(v > 0)) return 1; const e = 10 ** Math.floor(Math.log10(v)), m = v / e; return (m <= 1 ? 1 : m <= 1.5 ? 1.5 : m <= 2 ? 2 : m <= 3 ? 3 : m <= 4 ? 4 : m <= 5 ? 5 : m <= 6 ? 6 : m <= 8 ? 8 : 10) * e; }
 function seg(id, opcoes, atual) {
@@ -1090,7 +1106,9 @@ function abaCarbono() {
   const { rs, porCob, tot } = R, i = idx(S.ano);
   const a = tot[i], c = tot[40 + i], a85 = tot[0], c85 = tot[40];
   const dif = c - c85, [dv, du] = massa(Math.abs(dif)), sinal = dif < 0 ? "−" : "+";
-  const linhas = D.cobertura.map((cl, k) => ({ ...cl, k, a: porCob[k] ? porCob[k][i] : 0, m: porCob[k] ? porCob[k][40 + i] : 0 })).filter((l) => l.a > 0);
+  // nível da legenda de cobertura escolhido (0 a 3, colunas "cobertura n0".."n3" da planilha)
+  const NV = D.cobn[S.nivCob], porNv = S.nivCob === "2" ? porCob : somaSerie(NV.dados, rs);
+  const linhas = NV.classes.map((cl, k) => ({ ...cl, k, a: porNv[k] ? porNv[k][i] : 0, m: porNv[k] ? porNv[k][40 + i] : 0 })).filter((l) => l.a > 0);
   const metr = { tha: (l) => (l.a ? l.m / l.a : 0), massa: (l) => l.m / 1e9, area: (l) => l.a / 1e6 };
   const un = { tha: "t/ha", massa: "Gt", area: "Mha" };
   const fm = { tha: (v) => f1.format(v), massa: (v) => f2.format(v), area: (v) => f1.format(v) };
@@ -1104,9 +1122,9 @@ function abaCarbono() {
   // matriz cobertura × bioma/estado (planilha)
   const colBy = S.mxCol === "auto" ? (S.bioma !== "" && !S.uf ? "uf" : "bioma") : S.mxCol;
   const cols = new Map(), cel = {};
-  for (const k in D.cob) {
+  for (const k in NV.dados) {
     const r = regDe(k); if (!rs.has(r)) continue;
-    const [b, u] = D.regioes[r], ci = +k.split("|")[1], col = colBy === "bioma" ? D.biomas[b] : u, v = D.cob[k];
+    const [b, u] = D.regioes[r], ci = +k.split("|")[1], col = colBy === "bioma" ? D.biomas[b] : u, v = NV.dados[k];
     const o = cols.get(col) || [0, 0]; o[0] += v[i]; o[1] += v[40 + i]; cols.set(col, o);
     const z = cel[ci] || (cel[ci] = {}), w = z[col] || (z[col] = [0, 0]); w[0] += v[i]; w[1] += v[40 + i];
   }
@@ -1133,20 +1151,21 @@ function abaCarbono() {
   <div class="grid2">
     <div class="card"><div class="card-head"><div><h3>Área por faixa de estoque · ${S.ano} ${src("API MapBiomas")}</h3>
       <p class="sub">Legenda oficial da Plataforma, em t/ha. Rótulo: área e participação.</p>
+      <p class="note">Atenção: estas áreas vêm da API da Plataforma e não batem com o factsheet oficial (Brasil, 40–50 t/ha: 314 Mha na API, 305 Mha no PDF). Serão trocadas pelo cálculo por pixel no Earth Engine assim que ele terminar.</p>
       ${fx ? `<p class="total">Total: <b>${areaTxt(fxTot)}</b></p>` : ""}</div></div>
       ${fx ? `<div class="chart"><canvas id="c-faixas" aria-label="Área por faixa de estoque"></canvas></div>` : semAPI()}
     </div>
-    <div class="card"><div class="card-head"><div><h3>COS por cobertura e uso · ${S.ano} ${src("planilha")}</h3>
-      <p class="sub">Classes da Coleção 10. Áreas urbanas, mineração e praias não têm COS mapeado.</p>
+    <div class="card"><div class="card-head"><div><h3>COS por cobertura e uso · nível ${S.nivCob} · ${S.ano} ${src("planilha")}</h3>
+      <p class="sub">Classes da Coleção 10 no nível escolhido da legenda (0 = natural × antrópico; 3 separa as lavouras). Áreas urbanas, mineração e praias não têm COS mapeado.</p>
       <p class="total">Total: <b>${S.cobM === "tha" ? (a ? f1.format(c / a) + " t/ha" : "—") : S.cobM === "massa" ? f2.format(c / 1e9) + " Gt" : f1.format(a / 1e6) + " Mha"}</b></p></div>
-      <div class="detail">${seg("s-cob", [["tha", "t/ha"], ["massa", "Gt"], ["area", "Mha"]], S.cobM)}</div></div>
+      <div class="detail"><span class="flabel">Nível</span>${seg("s-nivcob", [["0", "Nível 0"], ["1", "Nível 1"], ["2", "Nível 2"], ["3", "Nível 3"]], S.nivCob)}${seg("s-cob", [["tha", "t/ha"], ["massa", "Gt"], ["area", "Mha"]], S.cobM)}</div></div>
       <div class="chart tall"><canvas id="c-cob" aria-label="COS por cobertura"></canvas></div>
     </div>
   </div>
   <div class="grid1"><div class="card">
-    <div class="card-head"><div><h3>Matriz · cobertura × ${colBy === "bioma" ? "bioma" : "estado"} · ${S.ano} ${src("planilha")}</h3>
+    <div class="card-head"><div><h3>Matriz · cobertura (nível ${S.nivCob}) × ${colBy === "bioma" ? "bioma" : "estado"} · ${S.ano} ${src("planilha")}</h3>
       <p class="sub">Cada célula soma o recorte e só depois divide. Sombreamento na rampa oficial do COS.</p></div>
-      <div class="detail"><span class="flabel">Colunas</span>${seg("s-mxcol", [["auto", "Automático"], ["bioma", "Bioma"], ["uf", "Estado"]], S.mxCol)}
+      <div class="detail"><span class="flabel">Nível</span>${seg("s-nivmx", [["0", "Nível 0"], ["1", "Nível 1"], ["2", "Nível 2"], ["3", "Nível 3"]], S.nivCob)}<span class="flabel">Colunas</span>${seg("s-mxcol", [["auto", "Automático"], ["bioma", "Bioma"], ["uf", "Estado"]], S.mxCol)}
         <span class="flabel">Valor</span>${seg("s-mxm", [["tha", "t/ha"], ["massa", "Gt"], ["area", "Mha"]], S.mxM)}</div></div>
     <div class="scroll"><table class="matrix"><thead><tr><th></th>${colL.map((cc) => `<th title="${esc(D.ufs[cc] || cc)}">${esc(cc)}</th>`).join("")}<th>Total</th></tr></thead><tbody>
     ${linM.map((l) => `<tr><th><i class="sw" style="background:${l.cor}"></i>${esc(l.nome)}</th>${colL.map((cc) => {
@@ -1163,8 +1182,11 @@ function abaCarbono() {
   if (fx) barras("c-faixas", { labels: legC.items.map((x) => x.nome.replace("entre ", "").replace(" e ", "–")), valores: fx.map((v) => v / 1e6),
     cores: legC.items.map((x) => x.cor), fmt: (v) => f1.format(v), unidade: "Mha",
     rotulo: (v) => `${f1.format(v)} Mha · ${pct(100 * v * 1e6 / fxTot)}` });
-  barras("c-cob", { labels: ord.map((l) => l.nome), valores: ord.map(metr[S.cobM]), cores: ord.map((l) => l.cor), fmt: fm[S.cobM], unidade: un[S.cobM] });
-  ligar("s-serie", "serie"); ligar("s-cob", "cobM"); ligar("s-mxcol", "mxCol"); ligar("s-mxm", "mxM");
+  barras("c-cob", { labels: ord.map((l) => l.nome), valores: ord.map(metr[S.cobM]), cores: ord.map((l) => l.cor), fmt: fm[S.cobM], unidade: un[S.cobM],
+    // em t/ha: área (Mha) junto do valor e a média do recorte em linha tracejada, para não ler alto t/ha em área irrisória
+    rotulo: S.cobM === "tha" ? (v, k) => `${f1.format(v)} · ${f1.format(ord[k].a / 1e6)} Mha` : null,
+    media: S.cobM === "tha" && a ? c / a : null, mediaRot: a ? `média do recorte ${f1.format(c / a)} t/ha` : "" });
+  ligar("s-serie", "serie"); ligar("s-cob", "cobM"); ligar("s-nivcob", "nivCob"); ligar("s-nivmx", "nivCob"); ligar("s-mxcol", "mxCol"); ligar("s-mxm", "mxM");
 }
 
 // ================= Granulometria =================
@@ -1559,7 +1581,7 @@ let R = null;
 // Fábrica de factsheets: módulo à parte (app/fabrica/fabrica.js, embutido no build) que segue o bioma e o estado da página
 const abaFabrica = () => {
   if (!window.FabricaSolo) { $("panel").innerHTML = `<p class="loading">O módulo da fábrica de factsheets não foi carregado.</p>`; return; }
-  FabricaSolo.montar($("panel"), { recorte: () => ({ bioma: S.bioma, uf: S.uf }), dadosUrl: "dados_fabrica.json", logo: $("logo-img") });
+  FabricaSolo.montar($("panel"), { recorte: () => ({ bioma: S.bioma, uf: S.uf }), dadosUrl: "dados_fabrica.json?v=" + VERSAO_DADOS, logo: $("logo-img") });
 };
 const ABAS = { carbono: abaCarbono, granulometria: abaGranulometria, textura: abaTextura, pedregosidade: abaPedregosidade, gif: abaGif, metodo: abaMetodo };
 function renderPainel() {
@@ -1570,7 +1592,7 @@ function renderPainel() {
   // figuras do factsheet que o explorador ainda não tinha, fornecidas pelo módulo da fábrica
   if (["carbono", "granulometria", "textura", "pedregosidade"].includes(S.tab) && window.FabricaSolo && FabricaSolo.montarAba) {
     const box = document.createElement("div"); box.id = "fs-aba"; $("panel").appendChild(box);
-    FabricaSolo.montarAba(box, { aba: S.tab, recorte: () => ({ bioma: S.bioma, uf: S.uf }), dadosUrl: "dados_fabrica.json", logo: $("logo-img") });
+    FabricaSolo.montarAba(box, { aba: S.tab, recorte: () => ({ bioma: S.bioma, uf: S.uf }), dadosUrl: "dados_fabrica.json?v=" + VERSAO_DADOS, logo: $("logo-img") });
   }
 }
 
@@ -1608,7 +1630,7 @@ const FONTES = {
 const METODOS = {
   "c-serie": () => S.serie === "massa" ? "Massa de COS 0-30 cm = soma do COS dos pixels do recorte" : "Estoque médio = soma do COS ÷ soma da área do recorte (média ponderada pela área)",
   "c-faixas": () => "Área (Mha) dos pixels em cada faixa de estoque de COS 0-30 cm, legenda oficial da Plataforma",
-  "c-cob": () => ({ tha: "Estoque médio por classe = soma do COS ÷ soma da área da classe no recorte", massa: "Soma do COS 0-30 cm da classe no recorte", area: "Soma da área da classe no recorte" }[S.cobM]),
+  "c-cob": () => "Nível " + S.nivCob + " da legenda de cobertura (Col. 10). " + ({ tha: "Estoque médio por classe = soma do COS ÷ soma da área da classe no recorte", massa: "Soma do COS 0-30 cm da classe no recorte", area: "Soma da área da classe no recorte" }[S.cobM]),
   "c-bandas": () => "Área (Mha) por faixa de teor da fração na camada, legenda oficial da Plataforma",
   "c-perfil": () => "Teor médio = soma(teor × área) ÷ soma(área), por camada de 10 cm",
   "c-texarea": () => "Área (Mha) por classe textural na camada, legenda oficial da Plataforma",
@@ -1716,10 +1738,11 @@ window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", red
 new MutationObserver(redesenhar).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
 
 Promise.all([
-  fetch("dados.json").then((r) => { if (!r.ok) throw new Error("dados.json: HTTP " + r.status); return r.json(); }),
-  fetch("dados_api.json").then((r) => r.ok ? r.json() : null).catch(() => null),
+  fetch("dados.json?v=" + VERSAO_DADOS).then((r) => { if (!r.ok) throw new Error("dados.json: HTTP " + r.status); return r.json(); }),
+  fetch("dados_api.json?v=" + VERSAO_DADOS).then((r) => r.ok ? r.json() : null).catch(() => null),
 ]).then(([d, a]) => {
   D = d; A = a;
+  D.cob = D.cobn["2"].dados; // nível 2 (base dos números-chave e da divisão natural × antrópico)
   $("badge").textContent = A ? "API MapBiomas + planilha oficial" : "Planilha oficial";
   const h = location.hash.slice(1);
   if (ABAS[h]) { S.tab = h; document.querySelectorAll("#tabs button").forEach((x) => x.setAttribute("aria-selected", String(x.dataset.tab === h))); }

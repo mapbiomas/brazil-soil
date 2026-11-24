@@ -108,6 +108,29 @@ for (b, u, c, a), g in d.groupby(["bioma", "uf", "cob", "ano"])[["area", "cos"]]
     v[a - 1985] = r(g.area)
     v[40 + a - 1985] = r(g.cos)
 
+# ---- COS por cobertura nos níveis 0 a 3 da legenda (colunas "cobertura n0".."n3" da planilha) ----
+# Cores: legendas oficiais da Plataforma MapBiomas ("Natural x Antrópico" e "Coverage").
+COB_NIVEIS = {
+    "0": [("Natural", "#66bb6a"), ("Antrópico", "#ffe082"), ("Corpo D'água", "#2532e4"), ("Não observado", "#c8c8c8")],
+    "1": [("Floresta", "#1f8d49"), ("Vegetação Herbácea e Arbustiva", "#d6bc74"), ("Agropecuária", "#ffefc3"),
+          ("Área não Vegetada", "#d4271e"), ("Corpo D'água", "#2532e4"), ("Não observado", "#c8c8c8")],
+    "2": [(n, c) for n, _, c in COB],
+    "3": [(n, c) for n, _, c in COB if n != "Agricultura"][:11]
+         + [("Lavoura Temporária", "#c27ba0"), ("Lavoura Perene", "#d082de")]
+         + [(n, c) for n, _, c in COB if n != "Agricultura"][11:],
+}
+cobn = {}
+for nivel, classes in COB_NIVEIS.items():
+    idx_n = {n.lower(): i for i, (n, _) in enumerate(classes)}
+    col = d["n" + nivel].str.lower().map(idx_n)
+    assert col.notna().all(), (nivel, d.loc[col.isna(), "n" + nivel].unique())
+    t = {}
+    for (b, u, c, a), g in d.assign(cn=col).groupby(["bioma", "uf", "cn", "ano"])[["area", "cos"]].sum().iterrows():
+        v = t.setdefault(f"{reg(b, u)}|{int(c)}", [0] * 80)
+        v[a - 1985] = r(g.area)
+        v[40 + a - 1985] = r(g.cos)
+    cobn[nivel] = {"classes": [{"nome": n, "cor": c} for n, c in classes], "dados": t}
+
 # ---- COS por textura 0-30 cm x ano ----
 tex = {}
 for nivel, arq in ARQ030.items():
@@ -184,7 +207,8 @@ dados = {
     "texturas": {k: [{"nome": n, "cor": c} for n, c in v] for k, v in TEX.items()},
     "camadas": ["0–10 cm", "0–20 cm", "0–30 cm", "20–40 cm", "30–60 cm", "60–100 cm"],
     "pedregosidade_faixas": PED,
-    "cob": cob, "tex": tex, "cam": cam, "ped": ped, "mun": municipios, "gran": gran,
+    # o nível 2 de cobn substitui o antigo "cob"
+    "cobn": cobn, "tex": tex, "cam": cam, "ped": ped, "mun": municipios, "gran": gran,
 }
 OUT.parent.mkdir(exist_ok=True)
 OUT.write_text(json.dumps(dados, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
