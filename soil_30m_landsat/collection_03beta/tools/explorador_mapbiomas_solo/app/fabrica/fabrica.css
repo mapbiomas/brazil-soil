@@ -48,6 +48,7 @@
 .fs-chart { position: relative; height: 300px; }
 .fs-chart.s { height: 230px; }
 .fs-chart.t { height: 380px; }
+.fs-chart.xl { height: 640px; }
 .fs-seg { display: inline-flex; flex-wrap: wrap; gap: 3px; padding: 3px; border-radius: 10px; background: var(--paper-2); }
 .fs-seg button { border: 0; background: transparent; padding: 5px 10px; border-radius: 7px; font: 600 0.78rem var(--body); color: var(--ink-2); cursor: pointer; }
 .fs-seg button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }

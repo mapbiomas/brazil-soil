@@ -4,7 +4,8 @@
    Uso no Explorador:
      FabricaSolo.montarAba(el, { aba: "carbono" | "granulometria" | "textura" | "pedregosidade",
                                  recorte: () => ({ bioma: S.bioma, uf: S.uf }), dadosUrl: "dados_fabrica.json", logo: imgElement })  // Promise
-     FabricaSolo.atualizar()   // depois de mudar o bioma ou o estado
+       opts.nivelCobertura (opcional): "0".."3", ou função que devolve o nível; sem ele, a folha 10 tem seletor próprio
+     FabricaSolo.atualizar()   // depois de mudar o bioma, o estado ou o nível de cobertura
      FabricaSolo.desmontar()   // ao sair da aba: destrói os gráficos e interrompe os mapas
    Página de teste: FabricaSolo.montar(el, opts) mostra as quatro abas em sequência.
    bioma = índice em dados.biomas como texto ("" = todos); uf = sigla ("" = todos).
@@ -13,7 +14,7 @@
 window.FabricaSolo = (() => {
 "use strict";
 let D = null, EL = null, OPT = {}, carregando = null;
-const S = { bioma: "", uf: "", aba: "todas", uso: "0", camGran: "0" };
+const S = { bioma: "", uf: "", aba: "todas", uso: "0", camGran: "0", nivelCob: "fs" };
 const charts = {};
 const CARTOES = {};
 const PEND = [];
@@ -246,31 +247,48 @@ function f9(rs) {
 }
 
 // Folha 10 · cobertura e uso por grupo textural, 1985 e 2024
+// nível da legenda de cobertura: o da página hospedeira (opts.nivelCobertura) ou o seletor próprio da folha
+const NIVEIS = [["fs", "Grupos do factsheet"], ["0", "Nível 0"], ["1", "Nível 1"], ["2", "Nível 2"], ["3", "Nível 3"]];
+function nivelCob() {
+  const n = typeof OPT.nivelCobertura === "function" ? OPT.nivelCobertura() : OPT.nivelCobertura;
+  return n != null && n !== "" && D.cobn && D.cobn[String(n)] ? String(n) : S.nivelCob;
+}
 function f10(rs) {
   FOLHA = 10;
-  const TC = somar(D.texcob, rs) || {};
+  const nv = nivelCob(), hospedeiro = nv !== S.nivelCob || (OPT.nivelCobertura != null && OPT.nivelCobertura !== "");
+  // categorias do nível: [nome, cor]; "fs" agrupa o nível 2 como no PDF
+  const cats = nv === "fs" ? USO10 : D.cobn[nv].filter((c) => c.nome !== "Não observado").map((c) => [c.nome, c.cor]);
+  const TC = somar(D.texcob[nv === "fs" ? "2" : nv], rs) || {};
+  const nomeCat = (c) => nv === "fs" ? grupoUso(D.cobertura[c]) : (D.cobn[nv][c].nome === "Não observado" ? null : D.cobn[nv][c].nome);
   const por = {};
   for (const k in TC) {
-    const [t, c] = k.split("|").map(Number), g = grupoUso(D.cobertura[c]); if (!g) continue;
+    const [t, c] = k.split("|").map(Number), g = nomeCat(c); if (!g) continue;
     const n = D.texturas[t].nome; if (!TEX_ORD.includes(n)) continue;
     const o = (por[n] ||= {}), w = (o[g] ||= [0, 0]); w[0] += TC[k][0]; w[1] += TC[k][1];
   }
+  const nomeNivel = NIVEIS.find(([v]) => v === nv)[1];
   const cards = [];
   ["Muito Argilosa", "Argilosa", "Média", "Arenosa", "Siltosa"].forEach((n, ti) => {
-    const o = por[n] || {}, t85 = soma(USO10.map(([g]) => (o[g] || [0, 0])[0])), t24 = soma(USO10.map(([g]) => (o[g] || [0, 0])[1]));
+    const o = por[n] || {}, t85 = soma(cats.map(([g]) => (o[g] || [0, 0])[0])), t24 = soma(cats.map(([g]) => (o[g] || [0, 0])[1]));
     if (!t24 && !t85) return;
-    const usos = USO10.filter(([g]) => o[g] && (o[g][0] || o[g][1]));
-    const p85 = usos.map(([g]) => t85 ? 100 * o[g][0] / t85 : 0), p24 = usos.map(([g]) => t24 ? 100 * o[g][1] / t24 : 0);
+    const usos = cats.filter(([g]) => o[g] && (o[g][0] || o[g][1]));
+    const pc = (g, j, t) => t ? 100 * o[g][j] / t : 0;
+    // no gráfico, só classes com pelo menos 0,5% em algum dos dois anos; o CSV traz todas
+    const vis = nv === "fs" ? usos : usos.filter(([g]) => Math.max(pc(g, 0, t85), pc(g, 1, t24)) >= 0.5);
+    const fora = usos.length - vis.length, hz = vis.length > 8;
+    const p85 = vis.map(([g]) => pc(g, 0, t85)), p24 = vis.map(([g]) => pc(g, 1, t24));
     cards.push(cGrafico("ct-" + ti, {
       titulo: `Cobertura e uso na textura ${n.toLowerCase()} · 1985 e 2024`, fonte: "Planilha", unidade: "% da área do grupo textural (0–30 cm)",
-      metodo: "Área de cada classe de cobertura col. 10 ÷ área total do grupo textural no ano (exclui não observado); vegetação nativa = classes naturais, exceto praia, duna e areal",
-      total: `Área da textura: <b>${areaTxt(t85)}</b> em 1985 · <b>${areaTxt(t24)}</b> em 2024`,
-      csv: () => [["cobertura e uso", "area_1985_ha", "area_2024_ha", "pct_1985", "pct_2024"], ...usos.map(([g], i) => [g, o[g][0], o[g][1], p85[i], p24[i]]), ["total", t85, t24, 100, 100]],
-      cfg: { labels: usos.map(([g]) => g), series: [{ nome: "1985", dados: p85, cor: css("--fs-y85") || "#b9a68a" }, { nome: "2024", dados: p24, cor: usos.map(([, c]) => c) }],
-        rot: (v) => f0.format(v) + "%", tip: (v, i, s) => `${f1.format(v)}% · ${areaTxt(o[usos[i][0]][s])}`, tick: (v) => f0.format(v) + "%" },
+      metodo: `Área de cada classe de cobertura col. 10 (${nomeNivel.toLowerCase()} da legenda) ÷ área total do grupo textural no ano (exclui não observado)` + (nv === "fs" ? "; vegetação nativa = classes naturais, exceto praia, duna e areal" : ""),
+      total: `Área da textura: <b>${areaTxt(t85)}</b> em 1985 · <b>${areaTxt(t24)}</b> em 2024` + (fora ? ` · ${fora} classe${fora > 1 ? "s" : ""} com menos de 0,5% só no CSV` : ""),
+      alt: !hz ? "" : vis.length > 14 ? "xl" : "t",
+      csv: () => [["cobertura e uso (" + nomeNivel.toLowerCase() + ")", "area_1985_ha", "area_2024_ha", "pct_1985", "pct_2024"], ...usos.map(([g]) => [g, o[g][0], o[g][1], pc(g, 0, t85), pc(g, 1, t24)]), ["total", t85, t24, 100, 100]],
+      cfg: { labels: vis.map(([g]) => g), hz, series: [{ nome: "1985", dados: p85, cor: css("--fs-y85") || "#b9a68a" }, { nome: "2024", dados: p24, cor: vis.map(([, c]) => c) }],
+        rot: (v) => (v < 1 ? f1 : f0).format(v) + "%", tip: (v, i, s) => `${f1.format(v)}% · ${areaTxt(o[vis[i][0]][s])}`, tick: (v) => f0.format(v) + "%" },
     }));
   });
-  return `<div class="fs-grid fs-g2">${cMapa("cob", { titulo: "Cobertura e uso da terra · 2024", sub: "A Plataforma serve hoje a Coleção 11; o factsheet usa a Coleção 10", k: "coverage_coverage-30m-droufo", legendId: "5837836a-c21c-4109-b3ef-5d8eb4ac1dc7", prm: { year: "2024" } })}
+  const ctrl = hospedeiro ? "" : `<div class="fs-ctrl"><span class="fs-flabel">Legenda de cobertura</span>${seg("fs-s-nivel", NIVEIS, nv)}</div>`;
+  return ctrl + `<div class="fs-grid fs-g2">${cMapa("cob", { titulo: "Cobertura e uso da terra · 2024", sub: "A Plataforma serve hoje a Coleção 11; o factsheet usa a Coleção 10", k: "coverage_coverage-30m-droufo", legendId: "5837836a-c21c-4109-b3ef-5d8eb4ac1dc7", prm: { year: "2024" } })}
      ${cards[0] || ""}</div>
      <div class="fs-grid fs-gm">${cards.slice(1).join("")}</div>`;
 }
@@ -374,7 +392,7 @@ function render() {
   EL.innerHTML = `<div class="fs-root">${html}</div>`;
   EL.querySelector(".fs-root").addEventListener("click", aoClicar);
   desenharGraficos();
-  ligarSeg("fs-s-uso", "uso"); ligarSeg("fs-s-cam", "camGran");
+  ligarSeg("fs-s-uso", "uso"); ligarSeg("fs-s-cam", "camGran"); ligarSeg("fs-s-nivel", "nivelCob");
   carregarMapas(geracao);
 }
 function ligarSeg(id, chave) {
