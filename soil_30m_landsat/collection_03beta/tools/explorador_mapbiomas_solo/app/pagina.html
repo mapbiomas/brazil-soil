@@ -1031,6 +1031,19 @@ function eixo(t, o = {}) {
   return Object.assign({ grid: { color: css("--grid") }, border: { color: css("--axis") }, ticks: { color: css("--muted") },
     title: t ? { display: true, text: t, color: css("--muted"), font: { size: 11, weight: 600 } } : { display: false } }, o);
 }
+// linha tracejada da média do recorte, desenhada atrás das barras (opção "media" de barras())
+const linhaMedia = {
+  id: "linhaMedia",
+  beforeDatasetsDraw(ch) {
+    const v = ch.$media; if (v == null || !isFinite(v)) return;
+    const hz = ch.options.indexAxis === "y", sc = hz ? ch.scales.x : ch.scales.y, a = ch.chartArea, p = sc.getPixelForValue(v), ctx = ch.ctx;
+    ctx.save(); ctx.setLineDash([5, 4]); ctx.strokeStyle = css("--ink-2"); ctx.lineWidth = 1.3;
+    ctx.beginPath(); if (hz) { ctx.moveTo(p, a.top); ctx.lineTo(p, a.bottom); } else { ctx.moveTo(a.left, p); ctx.lineTo(a.right, p); } ctx.stroke();
+    ctx.setLineDash([]); ctx.fillStyle = css("--ink-2"); ctx.font = `600 11px "Source Sans 3", sans-serif`; ctx.textBaseline = "bottom";
+    ctx.fillText(ch.$mediaRot || "", hz ? p + 4 : a.left + 4, hz ? a.top + 12 : p - 3);
+    ctx.restore();
+  },
+};
 /* barras(id, {labels, valores, cores, fmt, unidade, horizontal, destaque, onClick, rotulo}) */
 function barras(id, o) {
   if (charts[id]) charts[id].destroy();
@@ -1042,7 +1055,7 @@ function barras(id, o) {
   const max = Math.max(...o.valores.filter((v) => v != null), 0);
   charts[id] = new Chart(el, {
     type: "bar",
-    plugins: [ChartDataLabels],
+    plugins: [ChartDataLabels, linhaMedia],
     data: { labels: o.labels, datasets: [{ data: o.valores, backgroundColor: o.cores, borderColor: css("--seam"), borderWidth: 1, borderRadius: 3, maxBarThickness: 46 }] },
     options: {
       responsive: true, maintainAspectRatio: false, animation: false, indexAxis: hz ? "y" : "x",
@@ -1065,6 +1078,7 @@ function barras(id, o) {
     },
   });
   charts[id].$unidade = o.unidade; // usada no CSV
+  if (o.media != null) { charts[id].$media = o.media; charts[id].$mediaRot = o.mediaRot || ""; charts[id].update("none"); }
 }
 function niceMax(v) { if (!(v > 0)) return 1; const e = 10 ** Math.floor(Math.log10(v)), m = v / e; return (m <= 1 ? 1 : m <= 1.5 ? 1.5 : m <= 2 ? 2 : m <= 3 ? 3 : m <= 4 ? 4 : m <= 5 ? 5 : m <= 6 ? 6 : m <= 8 ? 8 : 10) * e; }
 function seg(id, opcoes, atual) {
@@ -1128,6 +1142,7 @@ function abaCarbono() {
   <div class="grid2">
     <div class="card"><div class="card-head"><div><h3>Área por faixa de estoque · ${S.ano} ${src("API MapBiomas")}</h3>
       <p class="sub">Legenda oficial da Plataforma, em t/ha. Rótulo: área e participação.</p>
+      <p class="note">Atenção: estas áreas vêm da API da Plataforma e não batem com o factsheet oficial (Brasil, 40–50 t/ha: 314 Mha na API, 305 Mha no PDF). Serão trocadas pelo cálculo por pixel no Earth Engine assim que ele terminar.</p>
       ${fx ? `<p class="total">Total: <b>${areaTxt(fxTot)}</b></p>` : ""}</div></div>
       ${fx ? `<div class="chart"><canvas id="c-faixas" aria-label="Área por faixa de estoque"></canvas></div>` : semAPI()}
     </div>
@@ -1158,7 +1173,10 @@ function abaCarbono() {
   if (fx) barras("c-faixas", { labels: legC.items.map((x) => x.nome.replace("entre ", "").replace(" e ", "–")), valores: fx.map((v) => v / 1e6),
     cores: legC.items.map((x) => x.cor), fmt: (v) => f1.format(v), unidade: "Mha",
     rotulo: (v) => `${f1.format(v)} Mha · ${pct(100 * v * 1e6 / fxTot)}` });
-  barras("c-cob", { labels: ord.map((l) => l.nome), valores: ord.map(metr[S.cobM]), cores: ord.map((l) => l.cor), fmt: fm[S.cobM], unidade: un[S.cobM] });
+  barras("c-cob", { labels: ord.map((l) => l.nome), valores: ord.map(metr[S.cobM]), cores: ord.map((l) => l.cor), fmt: fm[S.cobM], unidade: un[S.cobM],
+    // em t/ha: área (Mha) junto do valor e a média do recorte em linha tracejada, para não ler alto t/ha em área irrisória
+    rotulo: S.cobM === "tha" ? (v, k) => `${f1.format(v)} · ${f1.format(ord[k].a / 1e6)} Mha` : null,
+    media: S.cobM === "tha" && a ? c / a : null, mediaRot: a ? `média do recorte ${f1.format(c / a)} t/ha` : "" });
   ligar("s-serie", "serie"); ligar("s-cob", "cobM"); ligar("s-nivcob", "nivCob"); ligar("s-nivmx", "nivCob"); ligar("s-mxcol", "mxCol"); ligar("s-mxm", "mxM");
 }
 
