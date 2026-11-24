@@ -1,0 +1,66 @@
+/* Fábrica de factsheets do MapBiomas Solo col. 3: estilos do módulo (prefixo fs-).
+   Usa os tokens de cor e fonte da página que o hospeda (--page, --surface, --ink, --accent, --body, --display…),
+   os mesmos do Explorador do Solo col. 3. */
+.fs-root { --fs-y85: #b9a68a; }
+:root[data-theme="dark"] .fs-root { --fs-y85: #7d6b58; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .fs-root { --fs-y85: #7d6b58; } }
+.fs-root h2, .fs-root h3 { font-family: var(--display); font-weight: 600; letter-spacing: -0.01em; color: var(--ink); text-wrap: balance; }
+.fs-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px 16px; flex-wrap: wrap; margin: 0 0 14px; }
+.fs-intro { margin: 0; font-size: 0.86rem; color: var(--ink-2); max-width: 70ch; }
+.fs-toc { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 22px; }
+.fs-toc a { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px 5px 5px; border-radius: 999px; background: var(--paper-2); color: var(--ink-2); font-size: 0.8rem; font-weight: 600; text-decoration: none; }
+.fs-toc a span { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: var(--on-accent); font: 600 0.7rem var(--mono); }
+.fs-toc a:hover { color: var(--ink); }
+.fs-folha { margin: 0 0 34px; scroll-margin-top: 12px; }
+.fs-folha-head { display: flex; align-items: stretch; margin-bottom: 14px; border-radius: 12px; overflow: hidden; background: var(--surface); border: 1px solid var(--ring); }
+.fs-folha-head .fs-pg { flex: none; display: grid; place-items: center; width: 64px; background: var(--accent); color: var(--on-accent); font: 600 1.5rem var(--display); }
+.fs-folha-head .fs-ttl { padding: 10px 16px; min-width: 0; }
+.fs-folha-head h2 { margin: 0; font: 600 1.3rem var(--body); text-transform: uppercase; letter-spacing: 0.03em; }
+.fs-folha-head p { margin: 2px 0 0; font-size: 0.86rem; color: var(--muted); }
+.fs-kpis { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr)); margin-bottom: 14px; }
+.fs-card { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 14px 16px; min-width: 0; box-shadow: var(--shadow); }
+.fs-tile { border-top: 4px solid var(--c, var(--accent)); }
+.fs-tile .fs-label { font: 600 0.68rem var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.fs-tile .fs-value { font: 600 1.8rem/1.1 var(--display); margin-top: 6px; font-variant-numeric: tabular-nums; color: var(--accent); }
+.fs-tile .fs-value small { font: 600 0.92rem var(--body); color: var(--ink-2); margin-left: 4px; }
+.fs-tile .fs-tnote { font-size: 0.8rem; color: var(--muted); margin-top: 6px; }
+.fs-grid { display: grid; gap: 14px; margin-bottom: 14px; align-items: start; }
+.fs-g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.fs-g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.fs-gm { grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); }
+.fs-gm5 { grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr)); }
+.fs-grid .fs-grid { margin: 0; }
+@media (max-width: 960px) { .fs-g2, .fs-g3 { grid-template-columns: minmax(0, 1fr); } }
+.fs-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 6px 12px; margin-bottom: 8px; }
+.fs-card-head > div:first-child { flex: 1 1 auto; min-width: 0; }
+.fs-card h3 { margin: 0; font-size: 1rem; }
+.fs-sub { margin: 2px 0 0; font-size: 0.8rem; color: var(--muted); }
+.fs-total { margin: 4px 0 0; font-size: 0.84rem; color: var(--ink-2); }
+.fs-total b { font: 600 1rem var(--display); color: var(--ink); font-variant-numeric: tabular-nums; }
+.fs-chart { position: relative; height: 300px; }
+.fs-chart.s { height: 230px; }
+.fs-chart.t { height: 380px; }
+.fs-seg { display: inline-flex; flex-wrap: wrap; gap: 3px; padding: 3px; border-radius: 10px; background: var(--paper-2); }
+.fs-seg button { border: 0; background: transparent; padding: 5px 10px; border-radius: 7px; font: 600 0.78rem var(--body); color: var(--ink-2); cursor: pointer; }
+.fs-seg button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+.fs-ctrl { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 12px; font-size: 0.84rem; color: var(--ink-2); }
+.fs-flabel { font: 600 0.68rem var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.fs-note { margin: 0 0 14px; background: var(--warn-bg); border-left: 4px solid var(--warn-line); padding: 9px 14px; border-radius: 0 10px 10px 0; font-size: 0.84rem; color: var(--ink); }
+.fs-src { display: inline-block; font: 600 0.6rem var(--mono); letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; border: 1px dashed var(--axis); color: var(--muted); vertical-align: 2px; margin-left: 4px; white-space: nowrap; }
+.fs-root code { font: 0.84em var(--mono); background: var(--paper-2); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+.fs-mapa { margin: 0; aspect-ratio: 900 / 760; max-width: 100%; display: grid; place-items: center; background: var(--paper-2); border-radius: 8px; overflow: hidden; }
+.fs-mapa.ok { aspect-ratio: auto; display: block; }
+.fs-mapa img { display: block; width: 100%; height: auto; background: #ffffff; }
+.fs-mapa .fs-ph { padding: 18px; text-align: center; font-size: 0.82rem; color: var(--muted); max-width: 40ch; }
+.fs-mapa .fs-ph b { display: block; color: var(--ink-2); margin-bottom: 4px; }
+/* botões discretos de download, sempre visíveis */
+.fs-dl { display: inline-flex; gap: 4px; flex: none; }
+.fs-dl button { border: 1px solid var(--grid); background: transparent; color: var(--muted); border-radius: 6px; padding: 2px 7px; font: 600 0.64rem var(--mono); letter-spacing: 0.05em; cursor: pointer; opacity: 0.8; }
+.fs-dl button:hover, .fs-dl button:focus-visible { opacity: 1; color: var(--accent); border-color: var(--accent); }
+.fs-toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--page); padding: 8px 14px; border-radius: 999px; font-size: 0.84rem; z-index: 20; max-width: calc(100% - 32px); }
+.fs-method dl { display: grid; grid-template-columns: minmax(140px, 220px) minmax(0, 1fr); gap: 8px 16px; margin: 0; font-size: 0.88rem; }
+.fs-method dt { font-weight: 700; } .fs-method dd { margin: 0; color: var(--ink-2); }
+@media (max-width: 640px) { .fs-method dl { grid-template-columns: minmax(0, 1fr); } }
+.fs-loading { padding: 40px 0; color: var(--muted); }
+.fs-root :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .fs-root * { transition: none !important; } }
