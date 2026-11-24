@@ -17,6 +17,14 @@
 .fs-folha-head .fs-ttl { padding: 10px 16px; min-width: 0; }
 .fs-folha-head h2 { margin: 0; font: 600 1.3rem var(--body); text-transform: uppercase; letter-spacing: 0.03em; }
 .fs-folha-head p { margin: 2px 0 0; font-size: 0.86rem; color: var(--muted); }
+.fs-root { margin-top: 16px; }
+.fs-aba { margin-bottom: 34px; }
+.fs-aba-tit { margin: 0 0 12px; font-size: 1.3rem; }
+.fs-folha-tag { display: block; font: 600 0.62rem var(--mono); letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); margin-bottom: 3px; }
+.fs-kpis-wrap { margin-bottom: 14px; }
+.fs-kpis-wrap > .fs-folha-tag { display: inline-block; margin: 0 4px 6px 0; }
+.fs-kpis-wrap .fs-kpis { margin-bottom: 0; }
+.fs-note .fs-folha-tag { display: inline; margin-right: 6px; }
 .fs-kpis { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr)); margin-bottom: 14px; }
 .fs-card { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 14px 16px; min-width: 0; box-shadow: var(--shadow); }
 .fs-tile { border-top: 4px solid var(--c, var(--accent)); }
