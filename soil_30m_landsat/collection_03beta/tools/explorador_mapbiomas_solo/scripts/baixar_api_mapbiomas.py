@@ -110,23 +110,33 @@ def main():
             return chave, None, str(e)[:120]
         return chave, r if isinstance(r.get("statistic"), list) else None, None
 
+    def salvar():
+        CACHE.parent.mkdir(exist_ok=True)
+        tmp = CACHE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(CACHE)
+
     rodada = 0
     while pedidos:
         rodada += 1
+        faltam, feitos = [], 0
+        q_por_chave = dict(pedidos)
+        # salva a cada 50 respostas: uma interrupção perde no máximo isso
         with ThreadPoolExecutor(12) as ex:
-            res = list(ex.map(tentar, pedidos))
-        faltam = []
-        for (chave, q), (_, r, err) in zip(pedidos, res):
-            if r is None:
-                faltam.append((chave, q))
-            else:
-                cache[chave] = {"area": r.get("territoryAreaHa"),
-                                "stat": [{"ano": (s.get("year") or [None])[0], "total": s.get("total"),
-                                          "itens": {str(i["pixelValue"]): i["value"] for i in s["items"]}}
-                                         for s in r["statistic"]]}
-        CACHE.parent.mkdir(exist_ok=True)
-        CACHE.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
-        print(f"rodada {rodada}: {len(pedidos) - len(faltam)} prontos, {len(faltam)} calculando", flush=True)
+            for n, (chave, r, err) in enumerate(ex.map(tentar, pedidos), 1):
+                if r is None:
+                    faltam.append((chave, q_por_chave[chave]))
+                else:
+                    feitos += 1
+                    cache[chave] = {"area": r.get("territoryAreaHa"),
+                                    "stat": [{"ano": (s.get("year") or [None])[0], "total": s.get("total"),
+                                              "itens": {str(i["pixelValue"]): i["value"] for i in s["items"]}}
+                                             for s in r["statistic"]]}
+                if n % 50 == 0:
+                    salvar()
+                    print(f"rodada {rodada}: {n}/{len(pedidos)} consultados, {feitos} prontos", flush=True)
+        salvar()
+        print(f"rodada {rodada}: {feitos} prontos, {len(faltam)} calculando", flush=True)
         pedidos = faltam
         if pedidos:
             time.sleep(30)
@@ -143,7 +153,7 @@ def main():
         if pk == "cos":
             o["anos"] = {str(s["ano"]): [round(s["itens"].get(k, 0)) for k in ordem] for s in v["stat"]}
         else:
-            o[val] = [round(v["stat"][0]["itens"].get(k, 0)) for k in ordem]
+            o[val] = [round(v["stat"][0]["itens"].get(k, 0)) if v["stat"] else 0 for k in ordem]  # resposta vazia = sem área
         out["dados"][tk]["area_territorio"] = round(v["area"] or 0)
     OUT.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     print("ok", OUT, round(OUT.stat().st_size / 1e6, 2), "MB", flush=True)
