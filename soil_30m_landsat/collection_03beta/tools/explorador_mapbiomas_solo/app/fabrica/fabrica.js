@@ -310,9 +310,8 @@ function f12(rs) {
   const ff = porNome("Formação Florestal")[1], ag = porNome("Agricultura")[1];
   // faixa modal só com as faixas calculadas no GEE: as da API não reproduzem o factsheet
   let faixa = "";
-  // só com o cálculo do GEE completo para TODAS as regiões do recorte (o lote interativo falhou em várias UFs;
-  // somar só as que deram certo produz percentuais errados)
-  const fxCompleto = D.cosfx_fonte && D.cosfx_fonte.tipo === "gee" && D.cosfx && [...rs].every((r) => D.cosfx[r]);
+  // e só se todas as regiões do recorte tiverem faixa (um lote parcial daria percentuais falsos)
+  const fxCompleto = D.cosfx_fonte && D.cosfx_fonte.tipo === "gee" && !(D.cosfx_fonte.falhas || []).length && D.cosfx && [...rs].every((r) => D.cosfx[r]);
   const fx = fxCompleto ? somar(D.cosfx, rs) : null;
   if (fx) {
     const bins = [fx[0] + fx[1], ...fx.slice(2)], bt = soma(bins), im = bins.indexOf(Math.max(...bins));
