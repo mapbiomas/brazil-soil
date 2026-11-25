@@ -1,0 +1,106 @@
+/**
+ * ==============================================================================
+ * @name Passo 2: Extração de Covariáveis
+ * @project MapBiomas Solo - Coleção 4
+ * @author Laboratório de Pedometria - Taciara
+ * 
+ * @description
+ * Extração de covariáveis ambientais para os pontos de tamanho de partícula (PSD).
+ * Covariáveis disponíveis pela função require exportada no código 0_covariate_source
+ * ==============================================================================
+ */
+
+var metadados_base = {
+    'title': 'Matriz de treinamento - tamanho de partícula (Coleção 4)',
+    'description': 'Matriz consolidada por midlayer de profundidade com variáveis alvo e covariáveis ambientais estáticas.',
+    'project': 'MapBiomas Solo - Coleção 4',
+    'variable_target': 'argila, silte, areia e esqueleto',
+    'institution': 'Laboratório de Pedometria',
+    'script_path': 'users/taciaraz/mapbiomas_solo/collection4/psd/2_data_matrix',
+    'processing_date': ee.Date(Date.now()).format('YYYY-MM-dd')
+};
+
+var input_version = 'c04_2026_11_23_soildata_psd_modeling';
+var input_folder = 'projects/mapbiomas-brazil/assets/SOIL/POINTS/collection4/psd/';
+
+// Pontos médios (midlayers) das camadas de 10 cm até 100 cm
+var midlayers = [5, 15, 25, 35, 45, 55, 65, 75, 85, 95];
+
+// Parâmetros de amostragem em blocos e exportação
+var chunkSize = 3000;
+var export_name_base = 'c04_2026_11_23_soildata_psd_modeling';
+var output_folder = 'projects/mapbiomas-brazil/assets/SOIL/MATRIX/collection4/psd/';
+
+// ==============================================================================
+// 1. IMPORTAÇÃO DE DADOS E COVARIÁVEIS
+// ==============================================================================
+
+var points = ee.FeatureCollection(input_folder + input_version);
+
+var selectedProperties = [
+  'areia', 'argila', 'silte', 'esqueleto', 'esqueleto1p',
+  'log_areia1p_argila1p', 'log_silte1p_argila1p', 'log_esqueleto1p_argila1p',
+  'id', 'profundidade'
+];
+
+var pointsClean = points
+  .select(selectedProperties)
+  .filter(ee.Filter.notNull(['.geo', 'profundidade']));
+
+// Importação de todas as covariáveis estáticas
+var covariatesStack = require('users/taciaraz/mapbiomas_solo:collection4/psd/0_covariate_source');
+var covariatesStack_image = covariatesStack.static_covariates();
+
+// ==============================================================================
+// 2. SEPARAÇÃO POR MIDLAYER, AMOSTRAGEM EM BLOCOS E EXPORTAÇÃO
+// ==============================================================================
+
+print('Gerando Tasks de extração e exportação por midlayer (blocos de ' + chunkSize + ' pontos)...');
+
+midlayers.forEach(function(mid) {
+  // 2.1 Filtra os pontos da camada alvo
+  var camadaAlvo = pointsClean.filter(ee.Filter.eq('profundidade', mid));
+  var camadaList = camadaAlvo.toList(camadaAlvo.size());
+  var nTotal = camadaList.size();
+  var nChunks = nTotal.divide(chunkSize).ceil();
+
+  // 2.2 Função de amostragem por bloco
+  var makeChunkSample = function(chunkIndex) {
+    chunkIndex = ee.Number(chunkIndex);
+    var start = chunkIndex.multiply(chunkSize);
+    var subList = camadaList.slice(start, start.add(chunkSize));
+    var subFc = ee.FeatureCollection(subList);
+
+    var subSample = covariatesStack_image.sampleRegions({
+      collection: subFc,
+      properties: selectedProperties,
+      scale: 30,
+      geometries: true
+    });
+
+    return subSample.map(function(f) {
+      return f.set('chunk_id', chunkIndex);
+    });
+  };
+
+  // 2.3 Achata os blocos de volta em uma matriz única para o midlayer
+  var indices = ee.List.sequence(0, nChunks.subtract(1));
+  var sampledChunks = indices.map(makeChunkSample);
+  var matrizMidlayer = ee.FeatureCollection(sampledChunks)
+    .flatten()
+    .set(metadados_base)
+    .set('midlayer', mid);
+
+  // 2.4 Exporta uma matriz por profundidade
+  var currentExportName = 'MBSolo-Taciara-' + export_name_base + '_' + mid;
+
+
+  Export.table.toAsset({
+    collection: matrizMidlayer,
+    description: currentExportName,
+    assetId: output_folder + currentExportName
+  });
+});
+
+print('Configuração concluída! Total de tasks geradas:', midlayers.length);
+
