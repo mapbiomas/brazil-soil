@@ -1,0 +1,555 @@
+/**
+ * ==============================================================================
+ * Project:      MapBiomas Soil — Collection 4
+ * Title:        Soil Texture Classification (Textural Grouping, Subgrouping, and Classes)
+ * Description:  Google Earth Engine (GEE) module to classify soil particle-size
+ *               fractions (sand, silt, and clay) into three hierarchical levels
+ *               based on the Brazilian Soil Classification System (SiBCS / Santos et al., 2018)
+ *               and USDA/IBGE textural triangle standards:
+ *                 - Level 1 (l1): Textural Grouping (5 mineral classes + Rock)
+ *                 - Level 2 (l2): Textural Subgrouping (8 mineral classes + Rock)
+ *                 - Level 3 (l3): Textural Classes (13 mineral classes + Rock)
+ *
+ * Author:       Taciara Zborowski Horst
+ * Institution:  Laboratório de Pedometria / GT Solos - MapBiomas]
+ * Contact:      [seu.email@dominio.com | github.com/seu-usuario]
+ * Date:         2026-11-26
+ * Version:      Col4
+ * ==============================================================================
+ */
+
+// 1. Grupamentos texturais (Legenda 1) — MIN: 0, MAX: 5
+function l1_grupamentos_texturais(image) {
+  return image.expression(
+      // Afloramento rochoso
+      '((clay == 0) && (sand == 0) && (silt == 0)) ? 1 : ' + 
+      //2. Muito Argilosa
+       '(clay >= 60) ? 2 : ' + 
+      //3. Argilosa
+       '((clay >= 35) && (clay < 60)) ? 3 : ' + 
+      //4. Siltosa 
+       '((silt >= 50) && (sand < 15) && (clay < 35)) ? 4 : ' + 
+      //5. Arenosa
+       '((sand >= (70 + (clay))) && (sand <= (85 + (clay - 1))) && (clay < 30) && (silt < 30)) ? 5 : ' + 
+       '((clay < 30) && (sand >= (85 + (clay - 1))) && (silt < 18)) ? 5: ' + 
+      //6. Media
+       '((clay < 40) && (sand >= 15) && (sand < (85 + (clay - 1))) && (silt <= 85)) ? 6 : ' + 
+      // 0. nao classificado       
+       '0',
+       
+    {sand: image.select('sand'), silt: image.select('silt'), clay: image.select('clay')}
+  ).updateMask(image.select(0));
+}
+
+
+// 2. Sub-grupamentos texturais (Legenda 2) — MIN: 0, MAX: 8
+function l2_subgrupamentos_texturais(image) {
+  return image.expression(
+    // 1. Afloramento rochoso
+      '((clay == 0) && (sand == 0) && (silt == 0)) ? 1 : ' +     
+    // 2 - Muito argilosa
+       '(clay >= 60) ? 2 : ' + 
+    // 3. Argilosa       
+       '((clay >= 35) && (clay < 60)) ? 3 : ' +
+    // 4. Média argilosa       
+       '(((clay >= 20 && clay < 28) && (silt >= 20 && silt < 30) && (sand >= 45 && sand < 50)) || ' +
+       '((clay >= 28 && clay < 35) && (silt >= 15 && silt < 30) && (sand >= 45 && sand < 50)) || ' +
+       '((clay >= 20 && clay < 35) && (silt <= 30) && (sand >= 50))) ? 4 : ' +
+    // 5. Siltosa     
+       '((silt >= 50) && (sand < 15) && (clay < 35)) ? 5 : ' +
+    // 6. Média siltosa      
+       '((sand >= 15 && sand <= 50) && (clay < 35) && (silt >= 30 && silt < 85)) ||' +
+       '((clay > 24 && clay < 35) && (sand > 35 && sand < 46) && (silt > 18 && silt < 30))? 6 : ' + 
+    // 7. Média arenosa    
+       '((sand >= 50 && sand < 70) && (clay <= 20) && (silt > 0 && silt <= 50)) || '+
+       '((sand <= (70 + (clay))) && (clay <= 30) && (silt > 0 && silt < 30)) ? 7 : ' + 
+    // 8. Arenosa (ou arenosa média)    
+       '((sand >= (70 + (clay))) && (sand <= (85 + (clay - 1))) && (clay < 30) && (silt < 30)) ? 8 : ' + 
+    // 9. Muito arenosa
+       '((clay < 15) && (sand >= (85 + (clay - 1))) && (silt < 20)) ? 9 : ' +
+    // 0. nao classificado   
+       '0',
+    {sand: image.select('sand'), silt: image.select('silt'), clay: image.select('clay')}
+  ).updateMask(image.select(0));
+}
+
+// 3. Classes texturais (Legenda 3) — MIN: 0, MAX: 13
+function l3_classes_texturais(image) {
+  return image.expression(
+      // 1. Afloramento rochoso
+      '((clay == 0) && (sand == 0) && (silt == 0)) ? 1 : ' +      
+      // 2. Muito Argilosa
+        '(sand >= 0 && sand <= 40 && silt >= 0 && silt <= 40 && clay >= 60 && clay <= 100) ? 2 : ' +
+      // 3. Argilosa        
+        '(sand >=  0 && sand <= 20 && silt >= 20 && silt <= 40 && clay >= 40 && clay < 60) ? 3 : ' +
+        '(sand >= 20 && sand <= 45 && silt >= 0 && silt <= 40 && clay >= 40 && clay < 60) ? 3 : ' +
+      // 4. Argilo siltosa 
+        '(sand >=  0 && sand < 20 && silt >= 40 && silt <= 60 && clay >= 40 && clay <= 60) ? 4 : ' +
+      // 5. Franco argilosa
+        '((sand >= 20 && sand <= 45) && (silt >= 15 && silt <= 53) && (clay >= 27 && clay < 40)) ? 5 : ' +
+      // 6. Franco argilo siltosa   
+        '(sand >= 0 && sand <= 20 && silt >= 40 && silt < 73 && clay >= 27 && clay <= 40) ? 6 : ' +   
+      // 7. Argilo arenosa
+        '(sand >= 45 && sand < 65 && silt >= 0 && silt < 20 && clay >= 35 && clay <= 55) ? 7 : ' + 
+       // 8. Franco argilo arenosa 
+        '(sand >= 40 && sand <= 50 && silt >= 10 && silt < 28 && clay >= 20 && clay <= 35) ? 8 : ' +   
+        '(sand >= 50 && sand <= 80 && silt >=  0 && silt < 28 && clay >= 20 && clay < 35) ? 8 : ' +
+        '(sand >= 40 && sand <= 80 && silt >=  0 && silt < 28 && clay >= 20 && clay < 25) ? 8 : ' +
+        '(sand >= 40 && sand <= 80 && silt >=  0 && silt < 28 && clay >= 20 && clay < 35) ? 8 : ' +   
+        '(sand >= 45 && sand <= 55 && silt >= 10 && silt < 28 && clay >= 20 && clay < 35) ? 8 : ' +     
+        '(sand >= 44 && sand <= 57 && silt >= 25 && silt < 28 && clay >= 20 && clay < 30) ? 8 : ' +      
+        '(sand >= 44 && sand <= 50 && silt >= 15 && silt < 28 && clay >= 20) ? 8 : ' +  
+
+      // 11. Areia
+        '((sand >= (70 + (clay))) && (sand <= (85 + (clay - 1))) && (clay < 30) && (silt < 30)) ? 11 : ' +
+      // 12. Areia franca
+        '((clay < 15) && (sand >= (85 + (clay - 3))) && (silt < 20)) ? 12: ' + 
+      // 13. Silte
+        '(sand >= 0 && sand < 20 && silt >= 80 && silt <= 100 && clay >= 0 && clay < 10) ? 13 : ' + 
+        '(sand >= 0 && sand < 10 && silt >= 80 && silt <= 100 && clay >= 0 && clay < 10) ? 13 : ' +
+      // 14. Franco Siltosa
+        '(sand >= 0 && sand < 50 && silt >= 50 && silt <= 100 && clay >= 0 && clay < 27) ? 14 : ' + 
+        '(sand >= 0 && sand < 20 && silt >= 53 && silt <= 80 && clay >=  0 && clay < 27) ? 14 : ' + 
+        '(sand >= 0 && sand < 10 && silt >= 60 && silt <= 90 && clay >= 10 && clay < 27) ? 14 : ' + 
+        
+     // 10. Franco arenoso
+        '(((clay >= 7) && (clay < 20) && (sand > 52)) || ' +
+        '((clay < 7) && (silt < 50))) ? 10 : ' +
+
+      // 9. Franca (Loam: todo o miolo restante com clay < 27%, silt < 50% e sand <= 52%)
+    '((clay < 27) && (silt < 52)) ? 9 : ' +
+    
+      // 0. nao classificado  
+        '0',
+    {sand: image.select('sand'), silt: image.select('silt'), clay: image.select('clay')}
+  ).updateMask(image.select(0));
+}
+
+// ==============================================================================
+// 2. PALETAS E PARÂMETROS DE VISUALIZAÇÃO
+// ==============================================================================
+var palette_l1 = [
+  'red', // 0 não observado
+  'white', // 1 - afloramento
+  '#a83800', // 2 - Very clayey
+  '#aa8686', // 3 - Clay
+  '#35978f', // 4 - Silty 
+  '#fffe73', // 5 - Sandy
+  '#d7c5a5'  // 6 - Medium
+];
+
+var palette_l2 = [
+  'red', // 0 não observado
+  'white', // 1 - afloramento
+  '#a83800', // 2 = Muito argilosa
+  '#aa8686', // 3 = Argilosa
+  '#f4a582', // 4 = Média-argilosa 
+  '#35978f', // 5 = Siltosa  
+  '#d7c5a5', // 6 = Média-siltosa
+  '#F8D488', // 7 = Média-arenosa
+  '#E4B074', // 8 = Arenosa-média
+  '#fffe73'  // 9 = Muito-arenosa
+
+];
+
+var palette_l3 = [
+  'red', // 0 não observado
+  'white', // 1 - afloramento
+  "#a83800", // 1 - Muito Argilosa
+  "#aa8686", // 2 - Argilosa
+  "#3481a7", // 3 - Argilo Siltosa 
+  "#e9a9a9", // 4 - Franco Argilosa
+  "#80b1d3", // 5 - Silty Clay Loam 
+  "#c994c7", // 6 - Argilo Arenosa  
+  "#f4a582", // 7 - Franco Argilo Arenosa
+  "#d7c5a5", // 8 - Loam   
+  "#F8D488", // 9 - Sandy Loam
+  "#E4B074", // 10 - Franco arenoso
+  "#fffe73", // 11 - Sand
+  "#35978f", // 12 - Silte
+  "#ABBA7C" // 13 - Franco siltoso 
+
+
+];
+var legenda_l1 = {
+  1:'1 - afloramento rochoso',
+  2:'2 - Very clayey',
+  3:'3 - Clay',
+  4:'4 - Silty',
+  5:'5 - Sandy',
+  6:'6 - Medium',
+  0:'0 - não observado',
+};
+
+var legenda_l2 = {
+  1: '1 - afloramento rochoso',
+  2: '2 - Muito argilosa',
+  3: '3 - Argilosa',
+  4: '4 - Média-argilosa',
+  5: '5 - Siltosa',
+  6: '6 - Média-siltosa',
+  7: '7 - Média-arenosa',
+  8: '8 - Arenosa-média',
+  9: '9 - Muito-arenosa',
+  0: '0 - não observado',
+};
+
+var legenda_l3 = {
+  1:'1 - afloramento rochoso',
+  2: '2 - Heavy Clay',
+  3: '3 - Clay',
+  4: '4 - Silty Clay',
+  5: '5 - Clay Loam',
+  6: '6 - Silty Clay Loam ',
+  7: '7 - Sandy Clay ',
+  8: '8 - Sandy Clay Loam',
+  9: '9 - Loam',
+  10: '10 - Sandy Loam',
+  11: '11 - Loamy Sand',
+  12: '12 - Sand',
+  13: '13 - Silt Loam',
+  14: '14 - Silt',
+  0:  '0 - não observado',
+};
+
+var visParams = {
+  l1: {min: 0, max: 6, palette: palette_l1}, // 5  + afloramento
+  l2: {min: 0, max: 9, palette: palette_l2}, // 8 + afloramento
+  l3: {min: 0, max: 14, palette: palette_l3} // 13 + afloramento
+};
+
+// ==============================================================================
+// 3. GERAÇÃO DO TRIÂNGULO TEXTURAL E GUIAS
+// ==============================================================================
+
+function createTextureTriangleMap(opts) {
+  opts = opts || {};
+  var defaultBounds = ee.Geometry.Polygon(
+    [[[-10, -10], [10, -10], [10, 10], [-10, 10], [-10, -10]]], null, false
+  );
+  var triangleBounds = (opts.bounds !== undefined) ? opts.bounds : defaultBounds;
+  var bandNames = ee.List(opts.bandNames || ['sand', 'silt', 'clay']);
+  var addGuides = (opts.addGuides === undefined) ? true : opts.addGuides;
+  var pointsPerSide = (opts.pointsPerSide === undefined) ? 20 : opts.pointsPerSide;
+  var ticksPerAxis  = (opts.ticksPerAxis  === undefined) ? 7  : opts.ticksPerAxis;
+  var baseTickAxis  = (opts.baseTickAxis  === undefined) ? 'silt' : opts.baseTickAxis;
+  var offsetFracTicks     = (opts.offsetFrac        === undefined) ? 0.02 : opts.offsetFrac;
+  var offsetFracVertexLbl = (opts.offsetVertexFrac  === undefined) ? 0.05 : opts.offsetVertexFrac;
+  var offsetFracEdgeLbl   = (opts.offsetEdgeMidFrac === undefined) ? 0.06 : opts.offsetEdgeMidFrac;
+
+  function lerp(a, b, t) { return ee.Number(a).multiply(ee.Number(1).subtract(t)).add(ee.Number(b).multiply(t)); }
+  function lerp2(A, B, t) {
+    var oneMinus = ee.Number(1).subtract(t);
+    return ee.List([
+      ee.Number(A.get(0)).multiply(oneMinus).add(ee.Number(B.get(0)).multiply(t)),
+      ee.Number(A.get(1)).multiply(oneMinus).add(ee.Number(B.get(1)).multiply(t))
+    ]);
+  }
+  function edgePoints(vA, vB, n, fromA) {
+    var xA = ee.Number(ee.List(vA).get(0)), yA = ee.Number(ee.List(vA).get(1));
+    var xB = ee.Number(ee.List(vB).get(0)), yB = ee.Number(ee.List(vB).get(1));
+    return ee.List.sequence(0, n).map(function(i) {
+      var t = ee.Number(i).divide(n);
+      t = ee.Algorithms.If(fromA, t, ee.Number(1).subtract(t));
+      return ee.List([lerp(xA, xB, t), lerp(yA, yB, t)]);
+    });
+  }
+  function makeLines(points1, points2, axis, idx, valuePct) {
+    points1 = ee.List(points1); points2 = ee.List(points2);
+    var n = points1.length().min(points2.length());
+    return ee.List.sequence(0, n.subtract(1)).map(function(i) {
+      i = ee.Number(i);
+      return ee.Feature(ee.Geometry.LineString([ee.List(points1.get(i)), ee.List(points2.get(i))], null, false))
+               .set({axis: axis, idx: idx, value: valuePct});
+    });
+  }
+  function vAdd(a, b) { return ee.List([ee.Number(a.get(0)).add(b.get(0)), ee.Number(a.get(1)).add(b.get(1))]); }
+  function vSub(a, b) { return ee.List([ee.Number(a.get(0)).subtract(b.get(0)), ee.Number(a.get(1)).subtract(b.get(1))]); }
+  function vScale(a, k) { k = ee.Number(k); return ee.List([ee.Number(a.get(0)).multiply(k), ee.Number(a.get(1)).multiply(k)]); }
+  function vDot(a, b) { return ee.Number(a.get(0)).multiply(b.get(0)).add(ee.Number(a.get(1)).multiply(b.get(1))); }
+  function vLen(a) { return vDot(a, a).sqrt(); }
+  function vPerp(a) { return ee.List([ee.Number(a.get(1)).multiply(-1), ee.Number(a.get(0))]); }
+
+  var bounds = triangleBounds.bounds();
+  var coordinates = ee.List(bounds.coordinates().get(0));
+  var xs = coordinates.map(function(c) { return ee.Number(ee.List(c).get(0)); });
+  var ys = coordinates.map(function(c) { return ee.Number(ee.List(c).get(1)); });
+  var minX = ee.Number(xs.reduce(ee.Reducer.min()));
+  var maxX = ee.Number(xs.reduce(ee.Reducer.max()));
+  var minY = ee.Number(ys.reduce(ee.Reducer.min()));
+  var maxY = ee.Number(ys.reduce(ee.Reducer.max()));
+
+  // V1 (esq-base) = Sand, V2 (dir-base) = Silt, V3 (topo) = Clay
+  var V1 = ee.List([minX, minY]);
+  var V2 = ee.List([maxX, minY]);
+  var V3 = ee.List([minX.add(maxX).divide(2), maxY]);
+
+  var centroid = ee.List([
+    ee.Number(V1.get(0)).add(V2.get(0)).add(V3.get(0)).divide(3),
+    ee.Number(V1.get(1)).add(V2.get(1)).add(V3.get(1)).divide(3)
+  ]);
+
+  var side12 = vSub(V2, V1), side23 = vSub(V3, V2), side31 = vSub(V1, V3);
+  var avgSideLen = vLen(side12).add(vLen(side23)).add(vLen(side31)).divide(3);
+
+  var lonLat = ee.Image.pixelLonLat().rename(['lon', 'lat']);
+  var denom = ee.Image.constant(
+    (V2.getNumber(1).subtract(V3.getNumber(1))).multiply(V1.getNumber(0).subtract(V3.getNumber(0)))
+    .add(V3.getNumber(0).subtract(V2.getNumber(0)).multiply(V1.getNumber(1).subtract(V3.getNumber(1))))
+  );
+  var alphaNum = ee.Image.constant(V2.getNumber(1).subtract(V3.getNumber(1)))
+    .multiply(lonLat.select('lon').subtract(V3.getNumber(0)))
+    .add(ee.Image.constant(V3.getNumber(0).subtract(V2.getNumber(0)))
+    .multiply(lonLat.select('lat').subtract(V3.getNumber(1))));
+  var betaNum = ee.Image.constant(V3.getNumber(1).subtract(V1.getNumber(1)))
+    .multiply(lonLat.select('lon').subtract(V3.getNumber(0)))
+    .add(ee.Image.constant(V1.getNumber(0).subtract(V3.getNumber(0)))
+    .multiply(lonLat.select('lat').subtract(V3.getNumber(1))));
+  var alpha = alphaNum.divide(denom);
+  var beta  = betaNum.divide(denom);
+  var gamma = ee.Image.constant(1).subtract(alpha).subtract(beta);
+
+  var b1 = ee.String(bandNames.get(0));
+  var b2 = ee.String(bandNames.get(1));
+  var b3 = ee.String(bandNames.get(2));
+
+  var img = alpha.multiply(100).rename(b1)
+             .addBands(beta.multiply(100).rename(b2))
+             .addBands(gamma.multiply(100).rename(b3));
+  var mask = img.gte(0).and(img.lte(100)).reduce('and');
+  var triangleImage = img.updateMask(mask).clip(triangleBounds);
+
+  var gridLines = ee.FeatureCollection([]);
+  var tickPoints = ee.FeatureCollection([]);
+  var values = ee.List.sequence(1, ticksPerAxis).map(function(i) {
+    return ee.Number(i).divide(ticksPerAxis + 1).multiply(100);
+  });
+
+  if (addGuides) {
+    var AB = edgePoints(V1, V2, pointsPerSide, true);
+    var AC = edgePoints(V1, V3, pointsPerSide, true);
+    var BA = edgePoints(V2, V1, pointsPerSide, true);
+    var BC = edgePoints(V2, V3, pointsPerSide, true);
+    var CA = edgePoints(V3, V1, pointsPerSide, true);
+    var CB = edgePoints(V3, V2, pointsPerSide, true);
+
+    function pushOutFromCentroid(basePt, frac) {
+      var dir = vSub(basePt, centroid);
+      var len = vLen(dir);
+      var unit = vScale(dir, ee.Number(1).divide(len.max(1e-9)));
+      return vAdd(basePt, vScale(unit, avgSideLen.multiply(frac)));
+    }
+
+    function makeAxis(axisName, edgeFromV_toA, edgeFromV_toB, sideA, sideB) {
+      var axisStr = ee.String(axisName);
+      var allLines = makeLines(edgeFromV_toA, edgeFromV_toB, axisStr, -1, null);
+
+      sideA = ee.List(sideA); sideB = ee.List(sideB);
+      var sideVec = vSub(sideB, sideA);
+      var sideLen = vLen(sideVec);
+      var midSide = lerp2(sideA, sideB, ee.Number(0.5));
+
+      var perp   = vPerp(sideVec);
+      var nUnit0 = vScale(perp, ee.Number(1).divide(vLen(perp)));
+      var toCent = vSub(centroid, midSide);
+      var sign   = ee.Number(vDot(nUnit0, toCent)).lt(0).multiply(2).subtract(1);
+      var nUnit  = vScale(nUnit0, sign);
+      var offsetVec = vScale(nUnit, sideLen.multiply(offsetFracTicks));
+
+      var idxSeq = ee.List.sequence(0, values.length().subtract(1));
+      var ticks = ee.FeatureCollection(
+        idxSeq.map(function(i) {
+          i = ee.Number(i);
+          var v = ee.Number(values.get(i));
+          var t = v.divide(100);
+          var onSide  = lerp2(sideA, sideB, t);
+          var outside = vAdd(onSide, offsetVec);
+
+          var isBase = axisStr.equals(b3);
+          var displayVal = ee.Number(
+            ee.Algorithms.If(isBase,
+              ee.Algorithms.If(
+                ee.String(baseTickAxis).equals('sand'),
+                ee.Number(100).subtract(v),
+                v
+              ),
+              v
+            )
+          );
+
+          return ee.Feature(ee.Geometry.Point(outside)).set({
+            axis: axisStr, idx: i, value: v,
+            label: displayVal.format('%.0f').cat('%')
+          });
+        })
+      );
+      return {lines: ee.FeatureCollection(allLines), ticks: ticks};
+    }
+
+    var sandPack = makeAxis(b1, AB, AC, V3, V2);
+    var siltPack = makeAxis(b2, BA, BC, V1, V3);
+    var clayPack = makeAxis(b3, CA, CB, V1, V2);
+
+    gridLines  = sandPack.lines.merge(siltPack.lines).merge(clayPack.lines);
+    tickPoints = sandPack.ticks.merge(siltPack.ticks).merge(clayPack.ticks);
+    tickPoints = ee.FeatureCollection(tickPoints.map(function(f) {
+      f = ee.Feature(f);
+      var isBase = ee.String(f.get('axis')).equals(b3);
+      var v      = ee.Number(f.get('value'));
+      var label0 = ee.String(f.get('label'));
+      var newLabel = ee.String(
+        ee.Algorithms.If(isBase, ee.Number(100).subtract(v).format('%.0f').cat('%'), label0)
+      );
+      return f.set('label', newLabel);
+    }));
+
+    var B1cap = b1.slice(0, 1).toUpperCase().cat(b1.slice(1));
+    var B2cap = b2.slice(0, 1).toUpperCase().cat(b2.slice(1));
+    var B3cap = b3.slice(0, 1).toUpperCase().cat(b3.slice(1));
+
+    var vertexLabelsFC = ee.FeatureCollection([
+      ee.Feature(ee.Geometry.Point(pushOutFromCentroid(V1, offsetFracVertexLbl))).set({axis: b1, idx: 0, label: B1cap}),
+      ee.Feature(ee.Geometry.Point(pushOutFromCentroid(V2, offsetFracVertexLbl))).set({axis: b2, idx: 1, label: B2cap}),
+      ee.Feature(ee.Geometry.Point(pushOutFromCentroid(V3, offsetFracVertexLbl))).set({axis: b3, idx: 2, label: B3cap})
+    ]);
+
+    function midOut(A, B, sideVec, frac) {
+      var mid = lerp2(A, B, ee.Number(0.5));
+      var n = vPerp(sideVec);
+      var nUnit = vScale(n, ee.Number(1).divide(vLen(n)));
+      var sign  = ee.Number(vDot(nUnit, vSub(centroid, mid))).lt(0).multiply(2).subtract(1);
+      var nOut  = vScale(nUnit, sign);
+      return vAdd(mid, vScale(nOut, vLen(sideVec).multiply(frac)));
+    }
+
+    var edgeMidLabelsFC = ee.FeatureCollection([
+      ee.Feature(ee.Geometry.Point(midOut(V1, V2, side12, offsetFracEdgeLbl))).set({axisPair: b2.cat('>').cat(b1), idx: 0, label: B2cap.cat('>').cat(B1cap)}),
+      ee.Feature(ee.Geometry.Point(midOut(V2, V3, side23, offsetFracEdgeLbl))).set({axisPair: b2.cat('>').cat(b3), idx: 1, label: B2cap.cat('>').cat(B3cap)}),
+      ee.Feature(ee.Geometry.Point(midOut(V3, V1, side31, offsetFracEdgeLbl))).set({axisPair: b3.cat('>').cat(b1), idx: 2, label: B3cap.cat('>').cat(B1cap)})
+    ]);
+
+    var retLabels = {vertex: vertexLabelsFC, edge: edgeMidLabelsFC};
+  }
+
+  var empty = ee.FeatureCollection([]);
+  return [
+    triangleImage,
+    addGuides ? gridLines : empty,
+    null,
+    addGuides ? tickPoints : empty,
+    addGuides ? retLabels.vertex : empty,
+    addGuides ? retLabels.edge : empty
+  ];
+}
+
+// ==============================================================================
+// 4. RÓTULOS RASTER E EXECUÇÃO
+// ==============================================================================
+
+var textpkg = require('users/gena/packages:text');
+
+function drawLabelsFromFC(fc, labelProp, style, scaleFactor) {
+  var scale = ee.Number(Map.getScale()).multiply(ee.Number(scaleFactor || 1));
+  var imgs = fc.map(function(feat) {
+    return textpkg.draw(ee.String(feat.get(labelProp)), feat.geometry(), scale, style);
+  });
+  return ee.ImageCollection(imgs).mosaic();
+}
+
+function styleVertexLabels() {
+  return {textColor: '000000', outlineColor: 'ffffff', outlineWidth: 2.5, outlineOpacity: 0.7, fontType: 'Arial', fontSize: 18, alignX: 'center', alignY: 'center'};
+}
+function styleEdgeMidLabels() {
+  return {textColor: '000000', outlineColor: 'ffffff', outlineWidth: 2.5, outlineOpacity: 0.7, fontType: 'Arial', fontSize: 16, alignX: 'center', alignY: 'center'};
+}
+function styleTickLabels() {
+  return {textColor: '111111', outlineColor: 'ffffff', outlineWidth: 2.0, outlineOpacity: 0.6, fontType: 'Arial', fontSize: 16, alignX: 'center', alignY: 'center'};
+}
+
+// Gera o triângulo sintético
+var result = createTextureTriangleMap({
+  addGuides: true,
+  // bounds: bounds_triangulo_1, // descomente se quiser usar geometria customizada
+  ticksPerAxis: 9,
+  bandNames: ['sand', 'silt', 'clay']
+});
+
+var triangule = ee.Image(result[0]);
+var grid      = ee.FeatureCollection(result[1]);
+var ticks     = ee.FeatureCollection(result[3]);
+var vLbls     = ee.FeatureCollection(result[4]);
+var eLbls     = ee.FeatureCollection(result[5]);
+
+// Classifica o triângulo nos 3 níveis
+var triangulo_1_classificado = l1_grupamentos_texturais(triangule);
+var triangulo_2_classificado = l2_subgrupamentos_texturais(triangule);
+var triangulo_3_classificado = l3_classes_texturais(triangule);
+
+// Desenha os rótulos
+var vertexLabelsImg  = drawLabelsFromFC(vLbls, 'label', styleVertexLabels(), 1.0);
+var edgeMidLabelsImg = drawLabelsFromFC(eLbls, 'label', styleEdgeMidLabels(), 1.0);
+var tickLabelsImg    = drawLabelsFromFC(ticks, 'label', styleTickLabels(), 1.0);
+
+// Adiciona ao mapa
+Map.centerObject(triangule, 4);
+Map.addLayer(triangulo_1_classificado, visParams.l1, 'triangulo_1_classificado');
+Map.addLayer(triangulo_2_classificado, visParams.l2, 'triangulo_2_classificado');
+ Map.addLayer(triangulo_3_classificado, visParams.l3, 'triangulo_3_classificado');
+
+Map.addLayer(grid, {}, 'grid');
+Map.addLayer(ticks, {}, 'ticks');
+Map.addLayer(vLbls, {}, 'vLbls');
+Map.addLayer(eLbls, {}, 'eLbls');
+
+Map.addLayer(vertexLabelsImg, {}, 'Vertex labels');
+Map.addLayer(edgeMidLabelsImg, {}, 'Edge-mid labels');
+Map.addLayer(tickLabelsImg, {}, 'Tick labels');
+
+
+// ==============================================================================
+// TESTE DE COBERTURA 100% (VERIFICAÇÃO DE PIXELS NÃO CLASSIFICADOS = 0)
+// ==============================================================================
+
+function verificarCobertura(classifiedImg, region, scale, nome) {
+  // Conta pixels válidos na máscara original vs. pixels que receberam classe 0
+  var totalPixels = classifiedImg.mask().reduceRegion({
+    reducer: ee.Reducer.count(),
+    geometry: region,
+    scale: scale,
+    maxPixels: 1e13
+  }).values().get(0);
+
+  var naoClassificados = classifiedImg.eq(0).selfMask().reduceRegion({
+    reducer: ee.Reducer.count(),
+    geometry: region,
+    scale: scale,
+    maxPixels: 1e13
+  }).values().get(0);
+
+  print(nome + ' — Total de pixels avaliados:', totalPixels);
+  print(nome + ' — Pixels NÃO classificados (classe 0):', naoClassificados);
+}
+
+// 1. Teste no triângulo sintético em escala fina (ex: 1000 m, milhares de combinações decimais)
+
+// Resultado do teste
+
+verificarCobertura(triangulo_1_classificado, triangule.geometry(), 1000, 'Triângulo L1');
+// Triângulo L1 — Total de pixels avaliados:
+// 4955076
+// Triângulo L1 — Pixels NÃO classificados (classe 0):
+
+verificarCobertura(triangulo_2_classificado, triangule.geometry(), 1000, 'Triângulo L2');
+// Triângulo L2 — Total de pixels avaliados:
+// 4955076
+// Triângulo L2 — Pixels NÃO classificados (classe 0):
+// 0
+
+verificarCobertura(triangulo_3_classificado, triangule.geometry(), 1000, 'Triângulo L3');
+// Triângulo L3 — Total de pixels avaliados:
+// 4955076
+// Triângulo L3 — Pixels NÃO classificados (classe 0):
+// 0
+
+// 2. Teste no mapa real do Brasil (ex: 0-30 cm)
+// verificarCobertura(soilFraction_l1_grupamentos_texturais, brazilGeometry, 1000, 'Brasil 0-30cm L1');
