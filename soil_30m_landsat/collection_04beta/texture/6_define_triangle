@@ -132,8 +132,8 @@ function l3_classes_texturais(image) {
       // 12. Areia franca
         '((clay < 15) && (sand >= (85 + (clay - 3))) && (silt < 20)) ? 12: ' + 
       // 13. Silte
-        '(sand >= 0 && sand < 20 && silt >= 80 && silt <= 100 && clay >= 0 && clay < 10) ? 13 : ' + 
-        '(sand >= 0 && sand < 10 && silt >= 80 && silt <= 100 && clay >= 0 && clay < 10) ? 13 : ' +
+        '(sand >= 0 && sand < 20 && silt >= 80 && silt <= 100 && clay >= 0 && clay < 12) ? 13 : ' + 
+        '(sand >= 0 && sand < 10 && silt >= 80 && silt <= 100 && clay >= 0 && clay < 12) ? 13 : ' +
       // 14. Franco Siltosa
         '(sand >= 0 && sand < 50 && silt >= 50 && silt <= 100 && clay >= 0 && clay < 27) ? 14 : ' + 
         '(sand >= 0 && sand < 20 && silt >= 53 && silt <= 80 && clay >=  0 && clay < 27) ? 14 : ' + 
