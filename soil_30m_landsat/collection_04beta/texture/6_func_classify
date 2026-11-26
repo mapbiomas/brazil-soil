@@ -1,23 +1,20 @@
 /**
  * ==============================================================================
  * Project:      MapBiomas Soil — Collection 4
- * Title:        Soil Texture Classification Wrapper Functions (L1, L2, and L3)
- * Description:  Wrapper module that consumes the validated textural triangle
- *               rules from '6_define_triangle-NOT-EDIT' and adapts dynamic input
- *               band names and output band naming for production pipelines.
+ * Title:        Soil Texture Classification Functions (L1, L2, and L3)
+ * Description:  Consumes the geometric textural triangle rules exported by
+ *               '6_define_triangle-NOT-EDIT' and classifies soil particle-size
+ *               images (sand, silt, clay in %) into L1, L2, and L3 bands.
  *
  * Exported Functions:
  *   - exports.classify_grup(img, bandNames, outName)
- *       Applies Level 1 textural grouping (MIN: 0, MAX: 6) and returns int8 ee.Image.
  *   - exports.classify_subgrup(img, bandNames, outName)
- *       Applies Level 2 textural subgrouping (MIN: 0, MAX: 9) and returns int8 ee.Image.
  *   - exports.classify_textural_group(img, bandNames, outName)
- *       Applies Level 3 textural classes (MIN: 0, MAX: 14) and returns int8 ee.Image.
  *
  * Parameters:
  *   - img       {ee.Image} Input image containing sand, silt, and clay bands (%).
  *   - bandNames {Object}   Dictionary mapping input bands: {sand, silt, clay}.
- *   - outName   {String}   Output band name for the classified layer.
+ *   - outName   {String}   Output band name for the classified int8 ee.Image.
  *
  * Author:       Taciara Zborowski Horst
  * Institution:  Laboratório de Pedometria / GT Solos - MapBiomas
@@ -26,9 +23,10 @@
  * ==============================================================================
  */
 
-var triangleRules = require('users/taciaraz/mapbiomas_solo:collection4/psd/6_define_triangle');
+var triangleRules = require('users/taciaraz/mapbiomas_solo:collection4/psd/6_define_triangle-NOT-EDIT');
 
-// Helper para padronizar as bandas de entrada para ('sand', 'silt', 'clay')
+var triangleRules = require('users/taciaraz/mapbiomas_solo:collection4/psd/6_define_triangle-NOT-EDIT');
+
 function prepareBands(img, bandNames) {
   return img.select(
     [bandNames.sand, bandNames.silt, bandNames.clay],
