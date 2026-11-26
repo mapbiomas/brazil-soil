@@ -18,7 +18,34 @@
  * ==============================================================================
  */
 
-// 1. Grupamentos texturais (Legenda 1) — MIN: 0, MAX: 5
+//// para utilizar o módulo compartilhado de paletas e legendas 
+// var palettes = require('users/taciaraz/mapbiomas_solo:collection4/soil_palettes');
+
+
+// ==============================================================================
+// 1. IMPORTAÇÃO DO MÓDULO COMPARTILHADO DE PALETAS E LEGENDAS
+// ==============================================================================
+var palettes = require('users/taciaraz/mapbiomas_solo:collection4/soil_palettes');
+
+var palette_l1 = palettes.TEXTURA_PALETTE.L1;
+var palette_l2 = palettes.TEXTURA_PALETTE.L2;
+var palette_l3 = palettes.TEXTURA_PALETTE.L3;
+
+var legenda_l1 = palettes.TEXTURA_LEGEND.L1;
+var legenda_l2 = palettes.TEXTURA_LEGEND.L2;
+var legenda_l3 = palettes.TEXTURA_LEGEND.L3;
+
+var visParams = {
+  l1: palettes.TEXTURA_VIS.L1, // min: 0, max: 6 (5 classes + afloramento)
+  l2: palettes.TEXTURA_VIS.L2, // min: 0, max: 9 (8 classes + afloramento)
+  l3: palettes.TEXTURA_VIS.L3  // min: 0, max: 14 (13 classes + afloramento)
+};
+
+
+// ==============================================================================
+// 2. FUNÇÕES DE CLASSIFICAÇÃO TEXTURAL (L1, L2, L3)
+// ==============================================================================
+// 2. Grupamentos texturais (Legenda 1) — MIN: 0, MAX: 5
 function l1_grupamentos_texturais(image) {
   return image.expression(
       // Afloramento rochoso
@@ -124,99 +151,6 @@ function l3_classes_texturais(image) {
     {sand: image.select('sand'), silt: image.select('silt'), clay: image.select('clay')}
   ).updateMask(image.select(0));
 }
-
-// ==============================================================================
-// 2. PALETAS E PARÂMETROS DE VISUALIZAÇÃO
-// ==============================================================================
-var palette_l1 = [
-  'red', // 0 não observado
-  'white', // 1 - afloramento
-  '#a83800', // 2 - Very clayey
-  '#aa8686', // 3 - Clay
-  '#35978f', // 4 - Silty 
-  '#fffe73', // 5 - Sandy
-  '#d7c5a5'  // 6 - Medium
-];
-
-var palette_l2 = [
-  'red', // 0 não observado
-  'white', // 1 - afloramento
-  '#a83800', // 2 = Muito argilosa
-  '#aa8686', // 3 = Argilosa
-  '#f4a582', // 4 = Média-argilosa 
-  '#35978f', // 5 = Siltosa  
-  '#d7c5a5', // 6 = Média-siltosa
-  '#F8D488', // 7 = Média-arenosa
-  '#E4B074', // 8 = Arenosa-média
-  '#fffe73'  // 9 = Muito-arenosa
-
-];
-
-var palette_l3 = [
-  'red', // 0 não observado
-  'white', // 1 - afloramento
-  "#a83800", // 1 - Muito Argilosa
-  "#aa8686", // 2 - Argilosa
-  "#3481a7", // 3 - Argilo Siltosa 
-  "#e9a9a9", // 4 - Franco Argilosa
-  "#80b1d3", // 5 - Silty Clay Loam 
-  "#c994c7", // 6 - Argilo Arenosa  
-  "#f4a582", // 7 - Franco Argilo Arenosa
-  "#d7c5a5", // 8 - Loam   
-  "#F8D488", // 9 - Sandy Loam
-  "#E4B074", // 10 - Franco arenoso
-  "#fffe73", // 11 - Sand
-  "#35978f", // 12 - Silte
-  "#ABBA7C" // 13 - Franco siltoso 
-
-
-];
-var legenda_l1 = {
-  1:'1 - afloramento rochoso',
-  2:'2 - Very clayey',
-  3:'3 - Clay',
-  4:'4 - Silty',
-  5:'5 - Sandy',
-  6:'6 - Medium',
-  0:'0 - não observado',
-};
-
-var legenda_l2 = {
-  1: '1 - afloramento rochoso',
-  2: '2 - Muito argilosa',
-  3: '3 - Argilosa',
-  4: '4 - Média-argilosa',
-  5: '5 - Siltosa',
-  6: '6 - Média-siltosa',
-  7: '7 - Média-arenosa',
-  8: '8 - Arenosa-média',
-  9: '9 - Muito-arenosa',
-  0: '0 - não observado',
-};
-
-var legenda_l3 = {
-  1:'1 - afloramento rochoso',
-  2: '2 - Heavy Clay',
-  3: '3 - Clay',
-  4: '4 - Silty Clay',
-  5: '5 - Clay Loam',
-  6: '6 - Silty Clay Loam ',
-  7: '7 - Sandy Clay ',
-  8: '8 - Sandy Clay Loam',
-  9: '9 - Loam',
-  10: '10 - Sandy Loam',
-  11: '11 - Loamy Sand',
-  12: '12 - Sand',
-  13: '13 - Silt Loam',
-  14: '14 - Silt',
-  0:  '0 - não observado',
-};
-
-var visParams = {
-  l1: {min: 0, max: 6, palette: palette_l1}, // 5  + afloramento
-  l2: {min: 0, max: 9, palette: palette_l2}, // 8 + afloramento
-  l3: {min: 0, max: 14, palette: palette_l3} // 13 + afloramento
-};
 
 // ==============================================================================
 // 3. GERAÇÃO DO TRIÂNGULO TEXTURAL E GUIAS
