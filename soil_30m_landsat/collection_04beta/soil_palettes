@@ -1,0 +1,244 @@
+/**
+ * ==============================================================================
+ * Project:      MapBiomas Soil — Collection 4
+ * Title:        Color Palettes, Legends, and Visualization Parameters
+ * Description:  Shared Google Earth Engine (GEE) module centralizing standardized
+ *               color palettes, class legends, visualization parameters (visParams),
+ *               and value ranges across MapBiomas Soil products:
+ *                 - Soil Organic Carbon Stock (CARBON)
+ *                 - Particle-Size Distribution: Sand, Silt, Clay (PSD)
+ *                 - Soil Texture: L1, L2, L3 (TEXTURA_PALETTE / TEXTURA_LEGEND)
+ *                 - Soil Depth to Rock/Stoniness (SOIL_DEPTH_*)
+ *
+ * Author:       Taciara Zborowski Horst
+ * Institution:  Laboratório de Pedometria / GT Solos - MapBiomas
+ * Date:         2026-11-26
+ * Version:      Col4
+ *
+ * Outputs:      Exported objects containing palettes, legends, and visParams
+ *               for standardized map rendering and multi-product integration
+ * ==============================================================================
+ */
+
+//// para utilizar o módulo compartilhado de paletas e legendas 
+// var palettes = require('users/taciaraz/mapbiomas_solo:collection4/soil_palettes');
+
+/************************************************************
+ * 1. PRODUTO — ESTOQUE DE CARBONO (CARBON)
+ ************************************************************/
+var CARBON = {
+  carbon: {
+    min: 0,
+    max: 90,
+    palette: [
+      '#ffffe5', '#fff7bc', '#fee391', '#fec44f',
+      '#fe9929', '#ec7014', '#cc4c02', '#993404', '#662506'
+    ]
+  }
+};
+
+
+/************************************************************
+ * 2. PRODUTO — PSD (AREIA, SILTE, ARGILA)
+ ************************************************************/
+var PSD = {
+  areia: {
+    min: 0,
+    max: 100,
+    palette: [
+      '#fef0d9', '#fdd49e', '#fdbb84', '#fc8d59',
+      '#ef6548', '#d7301f', '#990000'
+    ]
+  },
+
+  silte: {
+    min: 0,
+    max: 100,
+    palette: [
+      '#edf8fb', '#b2e2e2', '#66c2a4',
+      '#2ca25f', '#006d2c'
+    ]
+  },
+
+  argila: {
+    min: 0,
+    max: 100,
+    palette: [
+      '#fff7ec', '#fee8c8', '#fdd49e', '#fdbb84',
+      '#fc8d59', '#e34a33', '#b30000'
+    ]
+  }
+};
+
+
+/************************************************************
+ * 3. PRODUTO — TEXTURA (L1, L2, L3)
+ ************************************************************/
+var TEXTURA_PALETTE = {};
+var TEXTURA_LEGEND  = {};
+var TEXTURA_VIS     = {};
+
+// ------------------------------------------------------------
+// L1 — Grupamento Textural (MIN: 0, MAX: 6)
+// ------------------------------------------------------------
+TEXTURA_PALETTE.L1 = [
+  '#0080ff', // 0 - Não Observado | Not Observed
+  '#707070', // 1 - Fragmentos de Rocha | Rock Fragments
+  '#a83800', // 2 - Muito Argilosa | Very Clay
+  '#aa8686', // 3 - Argilosa | Clay
+  '#b5d6ae', // 4 - Siltosa | Silt
+  '#fffe73', // 5 - Arenosa | Sand
+  '#d7c5a5'  // 6 - Média | Loam
+];
+
+TEXTURA_LEGEND.L1 = {
+  0: 'Não Observado | Not Observed',
+  1: 'Fragmentos de Rocha | Rock Fragments',
+  2: 'Muito Argilosa | Very Clay',
+  3: 'Argilosa | Clay',
+  4: 'Siltosa | Silt',
+  5: 'Arenosa | Sand',
+  6: 'Média | Loam'
+};
+
+TEXTURA_VIS.L1 = {
+  min: 0,
+  max: 6,
+  palette: TEXTURA_PALETTE.L1
+};
+
+// ------------------------------------------------------------
+// L2 — Subgrupamento Textural (MIN: 0, MAX: 9)
+// ------------------------------------------------------------
+TEXTURA_PALETTE.L2 = [
+  '#0080ff', // 0 - Não Observado | Not Observed
+  '#707070', // 1 - Fragmentos de Rocha | Rock Fragments
+  '#a83800', // 2 - Muito argilosa | Very Clay
+  '#aa8686', // 3 - Argilosa | Clay
+  '#f4a582', // 4 - Média-argilosa | Clay Loam
+  '#b5d6ae', // 5 - Siltosa | Silt
+  '#d7c5a5', // 6 - Média-siltosa | Silty Loam
+  '#F8D488', // 7 - Média-arenosa | Sandy Loam
+  '#E4B074', // 8 - Arenosa-média | Loamy Sand
+  '#fffe73'  // 9 - Muito Arenosa | Sand
+];
+
+TEXTURA_LEGEND.L2 = {
+  0: 'Não Observado | Not Observed',
+  1: 'Fragmentos de Rocha | Rock Fragments',
+  2: 'Muito argilosa | Very Clay',
+  3: 'Argilosa | Clay',
+  4: 'Média-argilosa | Clay Loam',
+  5: 'Siltosa | Silt',
+  6: 'Média-siltosa | Silty Loam',
+  7: 'Média-arenosa | Sandy Loam',
+  8: 'Arenosa-média | Loamy Sand',
+  9: 'Muito Arenosa | Sand'
+};
+
+TEXTURA_VIS.L2 = {
+  min: 0,
+  max: 9,
+  palette: TEXTURA_PALETTE.L2
+};
+
+// ------------------------------------------------------------
+// L3 — Classe Textural Completa (MIN: 0, MAX: 14)
+// ------------------------------------------------------------
+TEXTURA_PALETTE.L3 = [
+  '#0080ff', // 0  - Não Observado | Not Observed
+  '#707070', // 1  - Fragmentos de Rocha | Rock Fragments
+  '#a83800', // 2  - Muito Argilosa | Very Clay
+  '#aa8686', // 3  - Argilosa | Clay
+  '#3481a7', // 4  - Argilo Siltosa | Silty Clay
+  '#e9a9a9', // 5  - Franco Argilosa | Clay Loam
+  '#80b1d3', // 6  - Franco Argilo Siltosa | Silty Clay Loam
+  '#c994c7', // 7  - Argilo Arenosa | Sandy Clay
+  '#f4a582', // 8  - Franco Argilo Arenosa | Sandy Clay Loam
+  '#d7c5a5', // 9  - Franca | Loam
+  '#F8D488', // 10 - Franco Arenosa | Sandy Loam
+  '#E4B074', // 11 - Areia Franca | Loamy Sand
+  '#fffe73', // 12 - Areia | Sand
+  '#ABBA7C', // 13 - Franco Siltosa | Silty Loam
+  '#b5d6ae'  // 14 - Silte | Silt
+];
+
+TEXTURA_LEGEND.L3 = {
+  0:  'Não Observado | Not Observed',
+  1:  'Fragmentos de Rocha | Rock Fragments',
+  2:  'Muito Argilosa | Very Clay',
+  3:  'Argilosa | Clay',
+  4:  'Argilo Siltosa | Silty Clay',
+  5:  'Franco Argilosa | Clay Loam',
+  6:  'Franco Argilo Siltosa | Silty Clay Loam',
+  7:  'Argilo Arenosa | Sandy Clay',
+  8:  'Franco Argilo Arenosa | Sandy Clay Loam',
+  9:  'Franca | Loam',
+  10: 'Franco Arenosa | Sandy Loam',
+  11: 'Areia Franca | Loamy Sand',
+  12: 'Areia | Sand',
+  13: 'Franco Siltosa | Silty Loam',
+  14: 'Silte | Silt'
+};
+
+TEXTURA_VIS.L3 = {
+  min: 0,
+  max: 14,
+  palette: TEXTURA_PALETTE.L3
+};
+
+
+/************************************************************
+ * 4. PRODUTO — PROFUNDIDADE ATÉ PEDREGOSIDADE (SOIL DEPTH)
+ ************************************************************/
+var SOIL_DEPTH_CLASSES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+
+// Nota: mantém as 11 cores originais (classes 0..9 + 10 = >100 cm / sem impedimento)
+var SOIL_DEPTH_PALETTE = [
+  '#56008f', // 0 - 0–10 cm
+  '#7d00a3', // 1 - 10–20 cm
+  '#c300a9', // 2 - 20–30 cm
+  '#ff2f9a', // 3 - 30–40 cm
+  '#ff4f78', // 4 - 40–50 cm
+  '#ff6e63', // 5 - 50–60 cm
+  '#ff9678', // 6 - 60–70 cm
+  '#ffc5a1', // 7 - 70–80 cm
+  '#ffdfc6', // 8 - 80–90 cm
+  '#fff8eb', // 9 - 90–100 cm
+  '#fbf9f6'  // 10 - >100 cm (opcional, caso exista classe 10)
+];
+
+var SOIL_DEPTH_LABEL = {
+  0: '0–10 cm',
+  1: '10–20 cm',
+  2: '20–30 cm',
+  3: '30–40 cm',
+  4: '40–50 cm',
+  5: '50–60 cm',
+  6: '60–70 cm',
+  7: '70–80 cm',
+  8: '80–90 cm',
+  9: '90–100 cm'
+};
+
+var SOIL_DEPTH_VIS = {
+  min: 0,
+  max: 9,
+  palette: SOIL_DEPTH_PALETTE.slice(0, 10)
+};
+
+
+/************************************************************
+ * 5. EXPORTAÇÃO DO MÓDULO
+ ************************************************************/
+exports.CARBON             = CARBON;
+exports.PSD                = PSD;
+
+exports.TEXTURA_PALETTE    = TEXTURA_PALETTE;
+exports.TEXTURA_LEGEND     = TEXTURA_LEGEND;
+exports.TEXTURA_VIS        = TEXTURA_VIS;
+
+exports.SOIL_DEPTH_CLASSES = SOIL_DEPTH_CLASSES;
+exports.SOIL_DEPTH_LABELS  = SOIL_DEPTH_LABEL;
+exports.SOIL_DEPTH_PALETTE = SOIL_DEPTH_PALETTE;
+exports.SOIL_DEPTH_VIS     = SOIL_DEPTH_VIS;
