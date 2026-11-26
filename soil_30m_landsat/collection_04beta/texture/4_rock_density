@@ -1,0 +1,158 @@
+/******************************************************************************
+ * MapBiomas Solo — Coleção 4 — Densidade da Rocha (ρr) e Subprovíncias Geológicas
+ * ----------------------------------------------------------------------------
+ * Objetivo:
+ *   - Gerar imagem multibanda contendo o mapa de densidade da rocha (ρr) e as
+ *     8 bandas originais das subprovíncias estruturais do IBGE (LEG_1),
+ *     ajustadas ao limite de biomas com buffer de 5 km a 30 m (sem Zona Costeira)
+ *     e com preenchimento padrão (2.00 g/cm³) nas bordas sem cobertura geológica.
+ * Entradas:
+ *   - projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/IBGE_2025_SUBPROVINCIAS_LEG_1
+ *   - projects/mapbiomas-workspace/AUXILIAR/biome_2025_buf5k_30m (banda: biome_buffer_30m)
+ * Saída (asset):
+ *   - projects/mapbiomas-brazil/assets/SOIL/COVARIATES/MB_2026_ROCK_DENSITY
+ * Bandas exportadas (9 bandas):
+ *   - 0: densidade_rocha; tipo: float32; domínio típico: {2.00–2.74} g/cm³
+ *   - 1..8: SEDIMENTOS, SEDIMENTARES, VULCANICAS, PLUTONICAS, METAMORFICAS,
+ *           SED_IGN_MET, SED_IGN, IGN_MET (dados originais LEG_1)
+ * Autoria:
+ *   - MapBiomas Solo — contato@mapbiomas.org
+ *   - Versão: 2026-11-25 (C04) Taciara
+ ******************************************************************************/
+
+var assetId = 'projects/mapbiomas-brazil/assets/SOIL/COVARIATES/MB_2026_ROCK_DENSITY';
+
+// Máscara oficial de biomas com buffer de 5 km a 30 m (sem Zona Costeira)
+var biomas = ee.Image('projects/mapbiomas-workspace/AUXILIAR/biome_2025_buf5k_30m')
+  .select('biome_buffer_30m');
+
+var validMask = biomas.mask().gt(0);
+var aoi = biomas.geometry().bounds();
+
+var subprov = ee.Image(
+  'projects/mapbiomas-workspace/SOLOS/COVARIAVEIS/IBGE_2025_SUBPROVINCIAS_LEG_1'
+);
+
+/************************************************************
+ * Separar bandas
+ ************************************************************/
+var sp_sedimentos   = subprov.select('SEDIMENTOS').unmask(0).rename('sp_sedimentos');
+var sp_sedimentares = subprov.select('SEDIMENTARES').unmask(0).rename('sp_sedimentares');
+var sp_vulcanicas   = subprov.select('VULCANICAS').unmask(0).rename('sp_vulcanicas');
+var sp_plutonicas   = subprov.select('PLUTONICAS').unmask(0).rename('sp_plutonicas');
+var sp_metamorficas = subprov.select('METAMORFICAS').unmask(0).rename('sp_metamorficas');
+var sp_sed_ign_met  = subprov.select('SED_IGN_MET').unmask(0).rename('sp_sed_ign_met');
+var sp_sed_ign      = subprov.select('SED_IGN').unmask(0).rename('sp_sed_ign');
+var sp_ign_met      = subprov.select('IGN_MET').unmask(0).rename('sp_ign_met');
+
+/************************************************************
+ * Dicionário com densidades (ρr)
+ ************************************************************/
+var rhoDict = ee.Dictionary({
+  'SEDIMENTOS':   2.00,
+  'SEDIMENTARES': 2.30,
+  'VULCANICAS':   2.74,
+  'PLUTONICAS':   2.66,
+  'METAMORFICAS': 2.70,
+  'SED_IGN_MET':  2.60,
+  'SED_IGN':      2.57,
+  'IGN_MET':      2.70
+});
+
+/************************************************************
+ * Criar layers constantes de densidade
+ ************************************************************/
+var d_sedimentos   = ee.Image.constant(rhoDict.get('SEDIMENTOS')).rename('d_sedimentos');
+var d_sedimentares = ee.Image.constant(rhoDict.get('SEDIMENTARES')).rename('d_sedimentares');
+var d_vulcanicas   = ee.Image.constant(rhoDict.get('VULCANICAS')).rename('d_vulcanicas');
+var d_plutonicas   = ee.Image.constant(rhoDict.get('PLUTONICAS')).rename('d_plutonicas');
+var d_metamorficas = ee.Image.constant(rhoDict.get('METAMORFICAS')).rename('d_metamorficas');
+var d_sed_ign_met  = ee.Image.constant(rhoDict.get('SED_IGN_MET')).rename('d_sed_ign_met');
+var d_sed_ign      = ee.Image.constant(rhoDict.get('SED_IGN')).rename('d_sed_ign');
+var d_ign_met      = ee.Image.constant(rhoDict.get('IGN_MET')).rename('d_ign_met');
+
+/************************************************************
+ * Multiplicar cada constante pelo respectivo layer da subprovíncia
+ ************************************************************/
+var rho_sedimentos   = sp_sedimentos  .multiply(d_sedimentos);
+var rho_sedimentares = sp_sedimentares.multiply(d_sedimentares);
+var rho_vulcanicas   = sp_vulcanicas  .multiply(d_vulcanicas);
+var rho_plutonicas   = sp_plutonicas  .multiply(d_plutonicas);
+var rho_metamorficas = sp_metamorficas.multiply(d_metamorficas);
+var rho_sed_ign_met  = sp_sed_ign_met .multiply(d_sed_ign_met);
+var rho_sed_ign      = sp_sed_ign     .multiply(d_sed_ign);
+var rho_ign_met      = sp_ign_met     .multiply(d_ign_met);
+
+/************************************************************
+ * Somar todas as contribuições → mapa final de densidade da rocha
+ ************************************************************/
+var dens_rocha_raw = rho_sedimentos
+  .add(rho_sedimentares)
+  .add(rho_vulcanicas)
+  .add(rho_plutonicas)
+  .add(rho_metamorficas)
+  .add(rho_sed_ign_met)
+  .add(rho_sed_ign)
+  .add(rho_ign_met);
+
+// Garante preenchimento (2.00) na borda de 5 km onde não há polígono e recorta pelo buffer
+var dens_rocha = dens_rocha_raw
+  .where(dens_rocha_raw.eq(0), 2.00)
+  .updateMask(validMask)
+  .toFloat()
+  .rename('densidade_rocha');
+
+/************************************************************
+ * Empilhar densidade_rocha + todas as bandas originais (LEG_1)
+ ************************************************************/
+var subprov_originais = subprov.updateMask(validMask);
+var output_img = dens_rocha.addBands(subprov_originais);
+
+print('Imagem multibanda a exportar (bandas):', output_img.bandNames());
+
+/************************************************************
+ * Visualização (Densidade da Rocha + Subprovíncias Originais)
+ ************************************************************/
+Map.setCenter(-52.0, -15.0, 4);
+
+Map.addLayer(
+  output_img.select('densidade_rocha'),
+  {min: 2.0, max: 2.8, palette: ['003c30', '01665e', '35978f', 'a6dba0']},
+  '1. Densidade da Rocha (ρr) - C04',
+  true
+);
+
+// Visualização composta RGB de subprovíncias originais (R: Plutônicas, G: Sedimentares, B: Sedimentos)
+Map.addLayer(
+  output_img,
+  {bands: ['PLUTONICAS', 'SEDIMENTARES', 'SEDIMENTOS'], min: 0, max: 1},
+  '2. Subprovíncias Originais (RGB: Plutônicas/Sedimentares/Sedimentos)',
+  true
+);
+
+// Camadas individuais das 8 subprovíncias originais (desligadas por padrão para inspeção)
+var origBands = [
+  'SEDIMENTOS', 'SEDIMENTARES', 'VULCANICAS', 'PLUTONICAS',
+  'METAMORFICAS', 'SED_IGN_MET', 'SED_IGN', 'IGN_MET'
+];
+
+origBands.forEach(function(banda) {
+  Map.addLayer(
+    output_img.select(banda).selfMask(),
+    {palette: ['d95f02']},
+    'Orig - ' + banda,
+    false
+  );
+});
+
+/************************************************************
+ * Exportar para Asset
+ ************************************************************/
+Export.image.toAsset({
+  image: output_img,
+  description: 'MB_2026_ROCK_DENSITY',
+  assetId: assetId,
+  region: aoi,
+  scale: 30,
+  maxPixels: 1e13
+});
