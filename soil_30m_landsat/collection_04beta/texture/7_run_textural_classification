@@ -1,0 +1,201 @@
+/**
+ * ==============================================================================
+ * Project:      MapBiomas Soil — Collection 4
+ * Title:        Run Textural Classification Pipeline (L1, L2, and L3)
+ * Description:  Integrates 10 cm particle-size fraction predictions (sand, silt,
+ *               clay) into standard depth intervals (0–10, 0–20, 0–30, 20–40,
+ *               30–60, and 60–100 cm), applies L1/L2/L3 classification via
+ *               '6_func_classify-NOT-EDIT' across Brazil (unmasked), and
+ *               exports multi-band assets to collPath.
+ *
+ * Dependencies:
+ *   - users/taciaraz/mapbiomas_solo:collection4/psd/6_func_classify-NOT-EDIT
+ *   - users/taciaraz/mapbiomas_solo:collection4/soil_palettes
+ *
+ * Author:       Taciara Zborowski Horst
+ * Institution:  Laboratório de Pedometria / GT Solos - MapBiomas
+ * Date:         2026-11-26
+ * Version:      Col4
+ * ==============================================================================
+ */
+
+// ==============================================================================
+// 0. CONFIGURAÇÕES DE CAMINHO, VERSÃO E MÓDULOS
+// ==============================================================================
+var version  = 'mbsoil_psd_c04_2026_11_23';
+var collPath = 'projects/mapbiomas-brazil/assets/SOIL/RESULTS/collection4/psd';
+var biomas   = ee.FeatureCollection('projects/mapbiomas-workspace/AUXILIAR/biomas_IBGE_250mil_old')
+                 .geometry()
+                 .bounds();
+
+var texLib   = require('users/taciaraz/mapbiomas_solo:collection4/psd/6_func_classify-NOT-EDIT');
+var palettes = require('users/taciaraz/mapbiomas_solo:collection4/soil_palettes');
+
+// ==============================================================================
+// 1. CARREGAR FRAÇÕES ORIGINAIS (float, sem round, sem fechamento)
+// ==============================================================================
+var sandImg = ee.Image(collPath + '/mbsoil_psd_c04_2026_11_23_test_a_sand');
+var siltImg = ee.Image(collPath + '/mbsoil_psd_c04_2026_11_23_test_a_silt');
+var clayImg = ee.Image(collPath + '/mbsoil_psd_c04_2026_11_23_test_a_clay');
+
+// ==============================================================================
+// 2. LISTAS DE BANDAS DE 10 CM E INTEGRAÇÃO VERTICAL
+// ==============================================================================
+var sandBands = [
+  'sand_000_010cm', 'sand_010_020cm', 'sand_020_030cm', 'sand_030_040cm',
+  'sand_040_050cm', 'sand_050_060cm', 'sand_060_070cm', 'sand_070_080cm',
+  'sand_080_090cm', 'sand_090_100cm'
+];
+
+var siltBands = [
+  'silt_000_010cm', 'silt_010_020cm', 'silt_020_030cm', 'silt_030_040cm',
+  'silt_040_050cm', 'silt_050_060cm', 'silt_060_070cm', 'silt_070_080cm',
+  'silt_080_090cm', 'silt_090_100cm'
+];
+
+var clayBands = [
+  'clay_000_010cm', 'clay_010_020cm', 'clay_020_030cm', 'clay_030_040cm',
+  'clay_040_050cm', 'clay_050_060cm', 'clay_060_070cm', 'clay_070_080cm',
+  'clay_080_090cm', 'clay_090_100cm'
+];
+
+function integrate(img, bands, prefix) {
+  return ee.Image.cat([
+    img.select(bands[0]).rename(prefix + '_000_010cm'),
+    img.select([bands[0], bands[1]]).reduce(ee.Reducer.mean()).rename(prefix + '_000_020cm'),
+    img.select([bands[0], bands[1], bands[2]]).reduce(ee.Reducer.mean()).rename(prefix + '_000_030cm'),
+    img.select([bands[2], bands[3]]).reduce(ee.Reducer.mean()).rename(prefix + '_020_040cm'),
+    img.select([bands[3], bands[4], bands[5]]).reduce(ee.Reducer.mean()).rename(prefix + '_030_060cm'),
+    img.select([bands[6], bands[7], bands[8], bands[9]]).reduce(ee.Reducer.mean()).rename(prefix + '_060_100cm')
+  ]);
+}
+
+var sandAgg = integrate(sandImg, sandBands, 'sand');
+var siltAgg = integrate(siltImg, siltBands, 'silt');
+var clayAgg = integrate(clayImg, clayBands, 'clay');
+
+var sand = {
+  d10:  sandAgg.select('sand_000_010cm'),
+  d20:  sandAgg.select('sand_000_020cm'),
+  d30:  sandAgg.select('sand_000_030cm'),
+  d40:  sandAgg.select('sand_020_040cm'),
+  d60:  sandAgg.select('sand_030_060cm'),
+  d100: sandAgg.select('sand_060_100cm')
+};
+
+var silt = {
+  d10:  siltAgg.select('silt_000_010cm'),
+  d20:  siltAgg.select('silt_000_020cm'),
+  d30:  siltAgg.select('silt_000_030cm'),
+  d40:  siltAgg.select('silt_020_040cm'),
+  d60:  siltAgg.select('silt_030_060cm'),
+  d100: siltAgg.select('silt_060_100cm')
+};
+
+var clay = {
+  d10:  clayAgg.select('clay_000_010cm'),
+  d20:  clayAgg.select('clay_000_020cm'),
+  d30:  clayAgg.select('clay_000_030cm'),
+  d40:  clayAgg.select('clay_020_040cm'),
+  d60:  clayAgg.select('clay_030_060cm'),
+  d100: clayAgg.select('clay_060_100cm')
+};
+
+// ==============================================================================
+// 3. CLASSIFICAÇÃO TEXTURAL POR PROFUNDIDADE (L1, L2, L3)
+// ==============================================================================
+function classifyDepthSimple(sBand, siBand, cBand, code) {
+  var img = ee.Image.cat([
+    sBand.rename('sand'),
+    siBand.rename('silt'),
+    cBand.rename('clay')
+  ]);
+
+  var bandMap = {sand: 'sand', silt: 'silt', clay: 'clay'};
+
+  var grp = texLib.classify_grup(img, bandMap, 'textural_group_' + code);
+  var sub = texLib.classify_subgrup(img, bandMap, 'textural_subgroup_' + code);
+  var cls = texLib.classify_textural_group(img, bandMap, 'textural_class_' + code);
+
+  return ee.Image.cat([grp, sub, cls]);
+}
+
+var out10  = classifyDepthSimple(sand.d10,  silt.d10,  clay.d10,  '000_010cm');
+var out20  = classifyDepthSimple(sand.d20,  silt.d20,  clay.d20,  '000_020cm');
+var out30  = classifyDepthSimple(sand.d30,  silt.d30,  clay.d30,  '000_030cm');
+var out40  = classifyDepthSimple(sand.d40,  silt.d40,  clay.d40,  '020_040cm');
+var out60  = classifyDepthSimple(sand.d60,  silt.d60,  clay.d60,  '030_060cm');
+var out100 = classifyDepthSimple(sand.d100, silt.d100, clay.d100, '060_100cm');
+
+var GROUP = ee.Image.cat([
+  out10.select('textural_group_000_010cm'),
+  out20.select('textural_group_000_020cm'),
+  out30.select('textural_group_000_030cm'),
+  out40.select('textural_group_020_040cm'),
+  out60.select('textural_group_030_060cm'),
+  out100.select('textural_group_060_100cm')
+]);
+
+var SUBGROUP = ee.Image.cat([
+  out10.select('textural_subgroup_000_010cm'),
+  out20.select('textural_subgroup_000_020cm'),
+  out30.select('textural_subgroup_000_030cm'),
+  out40.select('textural_subgroup_020_040cm'),
+  out60.select('textural_subgroup_030_060cm'),
+  out100.select('textural_subgroup_060_100cm')
+]);
+
+var CLASS = ee.Image.cat([
+  out10.select('textural_class_000_010cm'),
+  out20.select('textural_class_000_020cm'),
+  out30.select('textural_class_000_030cm'),
+  out40.select('textural_class_020_040cm'),
+  out60.select('textural_class_030_060cm'),
+  out100.select('textural_class_060_100cm')
+]);
+
+// ==============================================================================
+// 4. EXPORTAÇÕES PARA collPath (SEM MÁSCARA)
+// ==============================================================================
+function exportTexture(img, name) {
+  Export.image.toAsset({
+    image: img.int16().set({
+      version: version,
+      collection: '4'
+    }),
+    description: 'Taciara-GTSOLO-' + version + '-' + name,
+    assetId: collPath + '/mapbiomas_soil_collection4_' + name,
+    region: biomas,
+    scale: 30,
+    maxPixels: 1e13,
+    pyramidingPolicy: {'.default': 'mode'}
+  });
+}
+
+exportTexture(GROUP,    'textural_group');
+exportTexture(SUBGROUP, 'textural_subgroup');
+exportTexture(CLASS,    'textural_class');
+
+// ==============================================================================
+// 5. VISUALIZAÇÃO (USANDO MÓDULO soil_palettes)
+// ==============================================================================
+Map.addLayer(
+  GROUP.select('textural_group_000_030cm'),
+  palettes.TEXTURA_VIS.L1,
+  'L1 – Grupamento (0–30 cm)',
+  false
+);
+
+Map.addLayer(
+  SUBGROUP.select('textural_subgroup_000_030cm'),
+  palettes.TEXTURA_VIS.L2,
+  'L2 – Subgrupamento (0–30 cm)',
+  false
+);
+
+Map.addLayer(
+  CLASS.select('textural_class_000_030cm'),
+  palettes.TEXTURA_VIS.L3,
+  'L3 – Classe Textural (0–30 cm)',
+  false
+);
