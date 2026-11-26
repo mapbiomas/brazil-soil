@@ -487,12 +487,3 @@ verificarCobertura(triangulo_3_classificado, triangule.geometry(), 1000, 'Triân
 
 // 2. Teste no mapa real do Brasil (ex: 0-30 cm)
 // verificarCobertura(soilFraction_l1_grupamentos_texturais, brazilGeometry, 1000, 'Brasil 0-30cm L1');
-
-
-// ==============================================================================
-// EXPORTAÇÃO DAS FUNÇÕES DE CLASSIFICAÇÃO
-// ==============================================================================
-exports.l1_grupamentos_texturais    = l1_grupamentos_texturais;
-exports.l2_subgrupamentos_texturais = l2_subgrupamentos_texturais;
-exports.l3_classes_texturais        = l3_classes_texturais;
-
