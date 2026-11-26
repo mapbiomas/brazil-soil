@@ -26,7 +26,7 @@
  * ==============================================================================
  */
 
-var triangleRules = require('users/taciaraz/mapbiomas_solo:collection4/psd/6_define_triangle-NOT-EDIT');
+var triangleRules = require('users/taciaraz/mapbiomas_solo:collection4/psd/6_define_triangle');
 
 // Helper para padronizar as bandas de entrada para ('sand', 'silt', 'clay')
 function prepareBands(img, bandNames) {
