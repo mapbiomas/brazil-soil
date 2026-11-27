@@ -9,10 +9,11 @@
  *                 - Particle-Size Distribution: Sand, Silt, Clay (PSD)
  *                 - Soil Texture: L1, L2, L3 (TEXTURA_PALETTE / TEXTURA_LEGEND)
  *                 - Soil Depth to Rock/Stoniness (SOIL_DEPTH_*)
+ *                 - Spatial Reliability / Distance to Nearest Sample (SPATIAL_RELIABILITY_*)
  *
  * Author:       Taciara Zborowski Horst
  * Institution:  Laboratório de Pedometria / GT Solos - MapBiomas
- * Date:         2026-11-26
+ * Date:         2026-11-27
  * Version:      Col4
  *
  * Outputs:      Exported objects containing palettes, legends, and visParams
@@ -22,6 +23,20 @@
 
 //// para utilizar o módulo compartilhado de paletas e legendas 
 // var palettes = require('users/taciaraz/mapbiomas_solo:collection4/soil_palettes');
+
+
+/*
+Produto,Objeto visParams
+palettes.CARBON.carbon
+palettes.PSD.areia
+palettes.PSD.silte
+palettes.PSD.argila
+palettes.TEXTURA_LEGEND.L1 
+palettes.TEXTURA_LEGEND.L2 
+palettes.TEXTURA_LEGEND.L3
+palettes.SOIL_DEPTH_VIS
+palettes.SPATIAL_RELIABILITY_VIS
+*/
 
 /************************************************************
  * 1. PRODUTO — ESTOQUE DE CARBONO (CARBON)
@@ -229,16 +244,55 @@ var SOIL_DEPTH_VIS = {
 
 
 /************************************************************
- * 5. EXPORTAÇÃO DO MÓDULO
+ * 5. PRODUTO — CONFIABILIDADE ESPACIAL / DISTÂNCIA (PSD)
  ************************************************************/
-exports.CARBON             = CARBON;
-exports.PSD                = PSD;
+var SPATIAL_RELIABILITY_PALETTE = [
+  '#fcffa4', // 0–30 km (0–30.000 m)
+  '#f98e09', // 30–60 km (30.000–60.000 m)
+  '#bc3754', // 60–90 km (60.000–90.000 m)
+  '#57106e', // 90–120 km (90.000–120.000 m)
+  '#000004'  // ≥ 120 km (≥ 120.000 m; teto visual 150.000 m)
+];
 
-exports.TEXTURA_PALETTE    = TEXTURA_PALETTE;
-exports.TEXTURA_LEGEND     = TEXTURA_LEGEND;
-exports.TEXTURA_VIS        = TEXTURA_VIS;
+var SPATIAL_RELIABILITY_LEGEND = {
+  0: '0–30 km',
+  1: '30–60 km',
+  2: '60–90 km',
+  3: '90–120 km',
+  4: '≥ 120 km'
+};
 
-exports.SOIL_DEPTH_CLASSES = SOIL_DEPTH_CLASSES;
-exports.SOIL_DEPTH_LABELS  = SOIL_DEPTH_LABEL;
-exports.SOIL_DEPTH_PALETTE = SOIL_DEPTH_PALETTE;
-exports.SOIL_DEPTH_VIS     = SOIL_DEPTH_VIS;
+var SPATIAL_RELIABILITY_INTERVALS = [
+  {min: 0,      max: 30000,  label: '0–30 km',   color: '#fcffa4'},
+  {min: 30000,  max: 60000,  label: '30–60 km',  color: '#f98e09'},
+  {min: 60000,  max: 90000,  label: '60–90 km',  color: '#bc3754'},
+  {min: 90000,  max: 120000, label: '90–120 km', color: '#57106e'},
+  {min: 120000, max: 150000, label: '≥ 120 km',  color: '#000004'}
+];
+
+var SPATIAL_RELIABILITY_VIS = {
+  min: 0,
+  max: 150000,
+  palette: SPATIAL_RELIABILITY_PALETTE
+};
+
+
+/************************************************************
+ * 6. EXPORTAÇÃO DO MÓDULO
+ ************************************************************/
+exports.CARBON                      = CARBON;
+exports.PSD                         = PSD;
+
+exports.TEXTURA_PALETTE             = TEXTURA_PALETTE;
+exports.TEXTURA_LEGEND              = TEXTURA_LEGEND;
+exports.TEXTURA_VIS                 = TEXTURA_VIS;
+
+exports.SOIL_DEPTH_CLASSES          = SOIL_DEPTH_CLASSES;
+exports.SOIL_DEPTH_LABELS           = SOIL_DEPTH_LABEL;
+exports.SOIL_DEPTH_PALETTE          = SOIL_DEPTH_PALETTE;
+exports.SOIL_DEPTH_VIS              = SOIL_DEPTH_VIS;
+
+exports.SPATIAL_RELIABILITY_PALETTE   = SPATIAL_RELIABILITY_PALETTE;
+exports.SPATIAL_RELIABILITY_LEGEND    = SPATIAL_RELIABILITY_LEGEND;
+exports.SPATIAL_RELIABILITY_INTERVALS = SPATIAL_RELIABILITY_INTERVALS;
+exports.SPATIAL_RELIABILITY_VIS       = SPATIAL_RELIABILITY_VIS;
