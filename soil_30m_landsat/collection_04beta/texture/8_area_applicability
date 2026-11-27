@@ -1,0 +1,271 @@
+/**
+ * ==============================================================================
+ * Project:      MapBiomas Soil — Collection 4
+ * Title:        Calculate Spatial Reliability — Distance to Nearest Sample (PSD)
+ * Description:  Computes geographic distance (in meters) from each 30 m pixel
+ *               to the nearest soil training observation used in PSD modeling,
+ *               applies the 30 m biome buffer mask ('biome_2025_buf5k_30m'),
+ *               renders an interactive map with white background and legend,
+ *               prints an ATBD thumbnail with legend, and exports the GeoTIFF
+ *               asset to projects/mapbiomas-brazil/assets/SOIL/_PRODUCTS_C4.
+ *
+ * Dependencies:
+ *   - projects/mapbiomas-brazil/assets/SOIL/POINTS/collection4/psd/c04_2026_11_23_soildata_psd_modeling
+ *   - projects/mapbiomas-workspace/AUXILIAR/biome_2025_buf5k_30m
+ *
+ * Author:       Wallace, Alessandro e Taciara
+ * Institution:  Laboratório de Pedometria / GT Solos - MapBiomas
+ * Date:         2026-11-27
+ * Version:      Col4
+ * ==============================================================================
+ */
+
+// ============================================================================
+// 1. INPUT DATA
+// ============================================================================
+
+var samples = ee.FeatureCollection(
+  'projects/mapbiomas-brazil/assets/SOIL/POINTS/collection4/psd/c04_2026_11_23_soildata_psd_modeling'
+);
+
+var biomas = ee.Image(
+  'projects/mapbiomas-workspace/AUXILIAR/biome_2025_buf5k_30m'
+).select('biome_buffer_30m');
+
+var limite = biomas.geometry();
+
+// Retângulo envoltório, somente para exportação
+var bounds = limite.bounds();
+
+// Máscara territorial a partir do raster de 30 m
+var maskBR = biomas.gt(0).selfMask();
+
+
+// ============================================================================
+// 2. PARAMETERS
+// ============================================================================
+
+var searchRadius = 2000000;
+var maxError = 100;
+var scale = 30;
+var crs = 'EPSG:5880';
+
+
+// ============================================================================
+// 3. INSPECT INPUT DATA
+// ============================================================================
+
+print('Number of training observations:', samples.size());
+print('First training observation:', samples.first());
+print('Geometry type:', samples.first().geometry().type());
+
+
+// ============================================================================
+// 4. CALCULATE GEOGRAPHIC DISTANCE AND APPLY BRAZILIAN MASK
+// ============================================================================
+
+var distance = samples.distance({
+  searchRadius: searchRadius,
+  maxError: maxError
+});
+
+var spatialReliability = distance
+  .rename('distance_to_nearest_sample')
+  .updateMask(maskBR);
+
+
+// ============================================================================
+// 5. VISUALIZATION PARAMETERS (INFERNO INVERTIDA)
+// ============================================================================
+
+var visParams = {
+  min: 0,
+  max: 150000,
+  palette: [
+    '#fcffa4',
+    '#f98e09',
+    '#bc3754',
+    '#57106e',
+    '#000004'
+  ]
+};
+
+
+// ============================================================================
+// 6. MAP INTERFACE (FUNDO BRANCO PARA PRINT)
+// ============================================================================
+
+var mainMap = ui.root.widgets().get(0);
+
+ui.root.clear();
+ui.root.add(mainMap);
+
+// Tenta estilo branco nativo e adiciona camada branca de fundo para garantir
+
+mainMap.centerObject(limite, 4);
+
+var whiteBackground = ee.Image.constant(1).visualize({
+  palette: ['#FFFFFF'],
+  min: 0,
+  max: 1
+});
+
+mainMap.addLayer(
+  whiteBackground,
+  {},
+  'White background'
+);
+
+mainMap.addLayer(
+  spatialReliability.clip(limite),
+  visParams,
+  'Distance to nearest training sample'
+);
+
+// Optional: display training locations
+// mainMap.addLayer(samples, {color: 'red'}, 'Training samples');
+
+// ============================================================================
+// 7. LEGEND (EM QUILÔMETROS)
+// ============================================================================
+
+var legendTitle = ui.Label({
+  value: 'Distance to nearest sample (km)',
+  style: {
+    fontWeight: 'bold',
+    fontSize: '13px',
+    margin: '0 0 6px 0',
+    padding: '0'
+  }
+});
+
+var gradient = ee.Image.pixelLonLat()
+  .select('longitude')
+  .unitScale(0, 100)
+  .multiply(visParams.max - visParams.min)
+  .add(visParams.min);
+
+var legendImage = gradient.visualize(visParams);
+
+var thumbnail = ui.Thumbnail({
+  image: legendImage,
+  params: {
+    bbox: '0,0,100,10',
+    dimensions: '240x16',
+    format: 'png'
+  },
+  style: {
+    stretch: 'horizontal',
+    margin: '0 4px 4px 4px',
+    border: '1px solid #cccccc'
+  }
+});
+
+var legendLabels = ui.Panel({
+  widgets: [
+    ui.Label('0', {margin: '0 4px', fontSize: '11px'}),
+    ui.Label('50', {margin: '0 4px', fontSize: '11px', textAlign: 'center', stretch: 'horizontal'}),
+    ui.Label('100', {margin: '0 4px', fontSize: '11px', textAlign: 'center', stretch: 'horizontal'}),
+    ui.Label('≥ 150', {margin: '0 4px', fontSize: '11px', textAlign: 'right'})
+  ],
+  layout: ui.Panel.Layout.flow('horizontal')
+});
+
+var legendPanel = ui.Panel({
+  widgets: [
+    legendTitle,
+    thumbnail,
+    legendLabels
+  ],
+  style: {
+    position: 'bottom-left',
+    padding: '10px 12px',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)'
+  }
+});
+
+mainMap.add(legendPanel);
+
+
+// // ============================================================================
+// // 8. THUMBNAIL FOR ATBD (COM LEGENDA JUNTO NO CONSOLE)
+// // ============================================================================
+
+// var mapThumbnail = ui.Thumbnail({
+//   image: spatialReliability.clip(limite).visualize(visParams),
+//   params: {
+//     dimensions: 1024,
+//     format: 'png',
+//     region: bounds
+//   },
+//   style: {
+//     width: '512px'
+//   }
+// });
+
+// // Cria uma cópia da legenda para exibir junto com a miniatura no Console
+// var atbdLegend = ui.Panel({
+//   widgets: [
+//     ui.Label({
+//       value: 'Distance to nearest sample (km)',
+//       style: {
+//         fontWeight: 'bold',
+//         fontSize: '13px',
+//         margin: '0 0 6px 0',
+//         padding: '0'
+//       }
+//     }),
+//     ui.Thumbnail({
+//       image: legendImage,
+//       params: {
+//         bbox: '0,0,100,10',
+//         dimensions: '240x16',
+//         format: 'png'
+//       },
+//       style: {
+//         stretch: 'horizontal',
+//         margin: '0 4px 4px 4px',
+//         border: '1px solid #cccccc'
+//       }
+//     }),
+//     ui.Panel({
+//       widgets: [
+//         ui.Label('0', {margin: '0 4px', fontSize: '11px'}),
+//         ui.Label('50', {margin: '0 4px', fontSize: '11px', textAlign: 'center', stretch: 'horizontal'}),
+//         ui.Label('100', {margin: '0 4px', fontSize: '11px', textAlign: 'center', stretch: 'horizontal'}),
+//         ui.Label('≥ 150', {margin: '0 4px', fontSize: '11px', textAlign: 'right'})
+//       ],
+//       layout: ui.Panel.Layout.flow('horizontal')
+//     })
+//   ],
+//   style: {
+//     padding: '8px 12px',
+//     backgroundColor: '#FFFFFF',
+//     border: '1px solid #dddddd',
+//     margin: '6px 0 0 0'
+//   }
+// });
+
+// var atbdCard = ui.Panel({
+//   widgets: [mapThumbnail, atbdLegend],
+//   style: {
+//     padding: '8px',
+//     backgroundColor: '#FFFFFF'
+//   }
+// });
+
+// print('Spatial reliability map - Collection 4:', atbdCard);
+// // ============================================================================
+// 9. EXPORT DISTANCE RASTER
+// ============================================================================
+
+Export.image.toAsset({
+  image: spatialReliability,
+  description: 'MapBiomas_Solo_C4_PSD_Spatial_Reliability_Asset',
+  assetId: 'projects/mapbiomas-brazil/assets/SOIL/_PRODUCTS_C4/mapbiomas_soil_collection4_psd_distance_to_nearest_sample',
+  region: bounds,
+  scale: scale,
+  crs: crs,
+  maxPixels: 1e13,
+  pyramidingPolicy: {'.default': 'mean'}
+});
